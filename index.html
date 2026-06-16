@@ -215,27 +215,24 @@ var _splashShownAt = Date.now();
     <button class="desk-nav-btn" data-p="equips" onclick="navTab('equips')">معدات</button>
     <button class="desk-nav-btn" data-p="freeads" onclick="navTab('freeads')">إعلانات مجانية</button>
   </nav>
-  <button class="menu-btn" onclick="openMenu()" aria-label="القائمة">
-    <span></span><span></span><span></span>
-  </button>
+  <div class="hdr-actions">
+    <button class="header-profile-btn" id="acHeaderBtn" onclick="window._acAccount&&window._acAccount()" aria-label="حسابي" title="حسابي">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="#ffe6cc"/><circle cx="12" cy="9.4" r="3.3" fill="#F6921E"/><path d="M5.4 18.7c.7-3 3.5-4.6 6.6-4.6s5.9 1.6 6.6 4.6A9.95 9.95 0 0 1 12 21.5a9.95 9.95 0 0 1-6.6-2.8z" fill="#F6921E"/></svg>
+    </button>
+    <button class="menu-btn" onclick="openMenu()" aria-label="القائمة">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
 </header>
 
 <!-- Side Menu -->
 <div class="menu-overlay" id="menuOverlay" onclick="closeMenu()"></div>
 <div class="side-menu" id="sideMenu">
   <div class="menu-header">
-    <img src="logo.png" alt="طلبك تم" style="width:85px;object-fit:contain">
+    <span style="font-weight:800;color:#0f172a;font-size:16px">القائمة</span>
     <button class="menu-close" onclick="closeMenu()">✕</button>
   </div>
   <div class="menu-items">
-    <button class="menu-item" onclick="closeMenu();navTab('home')">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>
-      الرئيسية
-    </button>
-    <button class="menu-item" onclick="closeMenu();navTab('all-listings')">
-      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zm0 10h8v8H3zm10-10h8v8h-8zm0 10h8v8h-8z"/></svg>
-      الإعلانات
-    </button>
     <button class="menu-item" onclick="closeMenu();navTab('cars')">
       <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.54 9.43l-1.28-3.84A2 2 0 0017.36 4H6.64a2 2 0 00-1.9 1.59L3.46 9.43A2 2 0 003 10.86V17a1 1 0 001 1h1a2 2 0 004 0h6a2 2 0 004 0h1a1 1 0 001-1v-6.14a2 2 0 00-.46-1.43zM6.5 16a1.5 1.5 0 110-3 1.5 1.5 0 010 3zm11 0a1.5 1.5 0 110-3 1.5 1.5 0 010 3zM5.41 10l.96-2.88A1 1 0 017.32 6.5h9.36a1 1 0 01.95.62L18.59 10H5.41zM7 4.5h10M6 3h12"/></svg>
       سيارات
@@ -253,11 +250,20 @@ var _splashShownAt = Date.now();
       إعلانات مجانية
     </button>
     <div class="menu-divider"></div>
+    <button class="menu-item" onclick="closeMenu();showFavorites()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+      المفضلة
+      <span class="fav-count" style="display:none;margin-right:auto;background:#ef4444;color:#fff;border-radius:10px;min-width:20px;height:20px;align-items:center;justify-content:center;font-size:11px;font-weight:800;padding:0 5px"></span>
+    </button>
+    <button class="menu-item" onclick="closeMenu();window._acOpenMyChats&&window._acOpenMyChats()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      محادثاتي
+    </button>
+    <div class="menu-divider"></div>
     <button class="menu-item" onclick="closeMenu();nav('about')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       من نحن
     </button>
-    <div class="menu-divider"></div>
     <button class="menu-item" onclick="closeMenu();nav('contact')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.11 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
       التواصل
@@ -348,8 +354,10 @@ var _splashShownAt = Date.now();
 <div class="page" id="page-listings">
   <div class="list-page">
     <h1 id="listTitle">جميع الإعلانات</h1>
-    <div class="filter-row" id="filterRow"></div>
     <div class="list-search-row">
+      <button onclick="history.back()" aria-label="رجوع" title="رجوع" style="flex-shrink:0;width:38px;height:38px;border:none;background:none;cursor:pointer;color:var(--primary);display:flex;align-items:center;justify-content:center;padding:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:24px;height:24px"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
       <div class="list-search">
         <input id="listSearch" placeholder="ابحث في الإعلانات..." oninput="filterListings()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -359,6 +367,7 @@ var _splashShownAt = Date.now();
         فلتر
       </button>
     </div>
+    <div class="filter-row" id="filterRow"></div>
 
 <!-- Filter Bottom Sheet -->
 <div class="filter-overlay" id="filterOverlay" onclick="closeFilterSheet()"></div>
@@ -594,6 +603,7 @@ var _splashShownAt = Date.now();
 <script src="supabase-config.js"></script>
 <script src="app.js"></script>
 <script src="auth-chat.js"></script>
+<script src="booking.js"></script>
 <!-- Free Ad Modal -->
 <div class="free-ad-modal-overlay" id="freeAdModalOverlay" onclick="if(event.target===this)closeFreeAdModal()">
   <div class="free-ad-modal">

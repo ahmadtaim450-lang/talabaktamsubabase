@@ -165,7 +165,25 @@ const FREEAD_IMGS=[
 let listings=[]
 
 
-let sC=null, sType=null, sQ='', sFeatured=false, carouselTimers=[];
+let sC=null, sType=null, sQ='', sFeatured=false, sFav=false, carouselTimers=[];
+
+/* ===== المفضّلة (تُحفظ محلياً) ===== */
+function getFavs(){ try{ return JSON.parse(localStorage.getItem('tam_favs')||'[]').map(String); }catch(e){ return []; } }
+function isFav(id){ return getFavs().includes(String(id)); }
+function toggleFav(id, ev){
+  if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  var favs=getFavs(), sid=String(id), i=favs.indexOf(sid);
+  if(i>-1) favs.splice(i,1); else favs.push(sid);
+  localStorage.setItem('tam_favs', JSON.stringify(favs));
+  document.querySelectorAll('.fav-btn[data-id="'+id+'"]').forEach(function(b){ b.classList.toggle('on', isFav(id)); });
+  updateFavCount();
+}
+function updateFavCount(){
+  var n=getFavs().length;
+  document.querySelectorAll('.fav-count').forEach(function(e){ e.textContent=n; e.style.display=n>0?'inline-flex':'none'; });
+}
+function showFavorites(){ sFav=true; sC=null; sType=null; sFeatured=false; sQ=''; nav('listings'); }
+var ICON_HEART='<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
 let calY,calM,_calStart=null,_calEnd=null,_calPrice=0;
 
 const getCat=id=>CATS.find(c=>c.id===id);
@@ -365,6 +383,7 @@ function renderCard(l,i,mode){
   const cardImgs=freead?imgs.slice(0,1):imgs;
   const cardImgHTML=cardImgs.map((s,j)=>`<img src="${s}" alt="${esc(l.title)}" class="${j===0?'act':''}" loading="lazy">`).join('');
   const cardDotsHTML=cardImgs.length>1?`<div class="l-dots">${cardImgs.map((_,j)=>`<span class="${j===0?'act':''}"></span>`).join('')}</div>`:'';
+  const favHTML=`<button class="card-fav fav-btn${isFav(l.id)?' on':''}" data-id="${l.id}" onclick="toggleFav('${l.id}',event)" aria-label="مفضلة">${ICON_HEART}</button>`;
 
   const descHTML=l.desc?`<div class="l-desc">${esc(l.desc).split('\n')[0]}</div>`:'';
   
@@ -376,13 +395,13 @@ function renderCard(l,i,mode){
 
   if(mode==='full'){
     return `<div class="l-card-full af s${Math.min((i%5)+1,5)}" style="direction:rtl" onclick="event.stopPropagation();viewDetail('${l.id}')">
-      <div class="l-img">${cardImgHTML}${cardDotsHTML}${featHTML}${freeAdBadge}</div>
+      <div class="l-img">${cardImgHTML}${cardDotsHTML}${featHTML}${freeAdBadge}${favHTML}</div>
       <div class="l-body" style="direction:rtl;text-align:right"><div class="l-title">${esc(l.title)}</div>${professionHTML}${descHTML}<div class="l-specs">${specs}</div><div class="l-loc">${ICON.pin}${locDisplay}</div>${priceHTML}</div>
     </div>`;
   }
   
   return `<div class="l-card af s${Math.min((i%5)+1,5)}" style="direction:rtl" onclick="event.stopPropagation();viewDetail('${l.id}')">
-    <div class="l-img">${cardImgHTML}${cardDotsHTML}${featHTML}${freeAdBadge}</div>
+    <div class="l-img">${cardImgHTML}${cardDotsHTML}${featHTML}${freeAdBadge}${favHTML}</div>
     <div class="l-body" style="direction:rtl;text-align:right"><div class="l-title">${esc(l.title)}</div>${professionHTML}${descHTML}<div class="l-specs">${specs}</div><div class="l-loc">${ICON.pin}${locDisplay}</div>${priceHTML}</div>
   </div>`;
 }
@@ -424,6 +443,7 @@ function _navBack() {
 
 function navTab(tab){
   _activeTab=tab;
+  sFav=false;
   // موبايل ناف
   document.querySelectorAll('.bnav-item').forEach(b=>b.classList.remove('act'));
   const mBtn=document.querySelector(`.bnav-item[data-p="${tab}"]`);
@@ -454,6 +474,7 @@ function nav(page,detailId,keepPage){
   }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('act'));
   document.getElementById('page-'+page).classList.add('act');
+  updateBackToMenu();
   if(page==='home') renderHome();
   if(page==='listings') renderListings(keepPage);
   if(!_skipPush) window.scrollTo({top:0,behavior:'smooth'});
@@ -463,6 +484,9 @@ function nav(page,detailId,keepPage){
   }
   _skipPush=false;
 }
+
+// (أُزيل الزر الطائف "رجوع للقائمة" — استُبدل بسهم رجوع صغير بجانب خانة البحث)
+function updateBackToMenu(){}
 
 // زر الرجوع بالمتصفح — يتزامن مع _navStack
 window.addEventListener('popstate',function(e){
@@ -485,6 +509,7 @@ window.addEventListener('popstate',function(e){
       if(dBtn)dBtn.classList.add('act');
       document.querySelectorAll('.page').forEach(p=>p.classList.remove('act'));
       document.getElementById('page-listings').classList.add('act');
+      updateBackToMenu();
       renderListings(true);
       if(e.state.scrollPos) setTimeout(()=>window.scrollTo(0,e.state.scrollPos),100);
     }else{
@@ -718,7 +743,7 @@ function applyFilters(){
 function renderListings(keepPage){
   _filters={};
   const typeLabels={apartment:'شقق',car:'سيارات',equipment:'معدات',freead:'إعلانات مجانية'};
-  document.getElementById('listTitle').textContent=sFeatured?'إعلانات مميزة':sC?getCat(sC).label:sType?typeLabels[sType]:'جميع الإعلانات';
+  document.getElementById('listTitle').textContent=sFav?'المفضلة':sFeatured?'إعلانات مميزة':sC?getCat(sC).label:sType?typeLabels[sType]:'جميع الإعلانات';
   if(sQ)document.getElementById('listSearch').value=sQ;
   
   const visibleCats=sType?CATS.filter(c=>c.type===sType):CATS;
@@ -729,6 +754,10 @@ function renderListings(keepPage){
     });
   }
   document.getElementById('filterRow').innerHTML=fb;
+  // في المفضلة: بلا بحث ولا فلترة ولا أقسام — فقط الإعلانات المفضّلة
+  var _sr=document.querySelector('.list-search-row');
+  if(_sr) _sr.style.display = sFav ? 'none' : '';
+  document.getElementById('filterRow').style.display = sFav ? 'none' : '';
   filterListings(keepPage);
 }
 
@@ -745,8 +774,9 @@ function filterListings(keepPage){
     const mc=!sC||l.catId===sC;
     const mt=!sType||getCat(l.catId).type===sType;
     const mf=!sFeatured||l.featured;
+    const mfav=!sFav||isFav(l.id);
     const ms=!q||l.title.includes(q)||l.desc.includes(q)||l.location.includes(q)||(l.carType||'').includes(q)||(l.carModel||'').includes(q)||(l.profession||'').includes(q);
-    if(!(mc&&mt&&mf&&ms))return false;
+    if(!(mc&&mt&&mf&&mfav&&ms))return false;
     
     // Advanced filters
     if(_filters.loc&&_filters.loc.length&&!_filters.loc.includes(l.location))return false;
@@ -775,7 +805,7 @@ function filterListings(keepPage){
   });
   
   const typeLabels={apartment:'شقق',car:'سيارات',equipment:'معدات',freead:'إعلانات مجانية'};
-  document.getElementById('listTitle').textContent=sFeatured?'إعلانات مميزة':sC?getCat(sC).label:sType?typeLabels[sType]:'جميع الإعلانات';
+  document.getElementById('listTitle').textContent=sFav?'المفضلة':sFeatured?'إعلانات مميزة':sC?getCat(sC).label:sType?typeLabels[sType]:'جميع الإعلانات';
   document.getElementById('listCount').textContent=filtered.length+' إعلان';
   
   // Show free-ad CTA when viewing free ads section
@@ -911,6 +941,8 @@ function viewDetail(id){
   // Switch to detail page
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('act'));
   document.getElementById('page-detail').classList.add('act');
+  updateBackToMenu();
+  setTimeout(prefillContactFields, 250);
   
   // Scroll to top
   window.scrollTo({top:0,behavior:'smooth'});
@@ -925,6 +957,7 @@ function viewDetail(id){
   const dotsHTML=imgs.length>1?`<div class="l-dots">${imgs.map((_,j)=>`<span class="${j===0?'act':''}"></span>`).join('')}</div>`:'';
   let badgeClass=l.catId==='apt-rent'?'rent':l.catId==='apt-sale'?'sale':l.catId==='car-rent'?'car-r':l.catId==='car-sale'?'car-s':l.catId==='equip-rent'?'equip-r':l.catId==='free-ad'?'free-ad':'equip-s';
 
+	  if(rent){ document.getElementById('detWrap').innerHTML = gathernRentalHTML(l, cat, imgs, badgeClass); return; }
 	  if(rent && apt){
 	    // ===== RENTAL APARTMENTS - with Monthly/Daily toggle =====
 	    let specsHTML=buildDetailSpecs(l,apt);
@@ -989,8 +1022,8 @@ function viewDetail(id){
 	                    <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
 	                  </div>
 	                  <div class="bf-form-footer">
-	                    <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
-	                  </div>
+	                    <button class="book-wa-btn" onclick="submitBooking('${l.id}')">إرسال طلب الحجز</button>
+                    <button class="book-wa-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>	                  </div>
 	                </div>
 	              </div>
 	            </div>
@@ -999,6 +1032,7 @@ function viewDetail(id){
 	                <div class="rbc-price" id="abSidePrice">${fmtPrice(l.price,true)} <small>/ يوم</small></div>
 	                <div class="rbc-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>
 	                <button class="rbc-btn" onclick="handleBookClick()">احجز الآن</button>
+                <button class="rbc-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>
 	              </div>
 	            </div>
 	          </div>
@@ -1022,7 +1056,8 @@ function viewDetail(id){
 	                <div class="bf-group"><label class="bf-label">رقم الهاتف</label><input type="tel" id="mbfPhone" class="bf-input" placeholder="09xxxxxxxx" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
 	              </div>
 	              <div class="bf-form-footer">
-	                <button class="book-wa-btn" onclick="submitMonthlyBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
+	                <button class="book-wa-btn" onclick="submitMonthlyBooking('${l.id}')">إرسال طلب الحجز</button>
+                <button class="book-wa-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>
 	              </div>
 	            </div>
 	          </div>
@@ -1105,8 +1140,8 @@ function viewDetail(id){
                   <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
                 </div>
                 <div class="bf-form-footer">
-                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
-                </div>
+                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">إرسال طلب الحجز</button>
+                    <button class="book-wa-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>                </div>
               </div>
             </div>
           </div>
@@ -1116,6 +1151,7 @@ function viewDetail(id){
               <div class="rbc-price" id="abSidePrice">${fmtPrice(l.price,true)} <small>/ يوم</small></div>
               <div class="rbc-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>
               <button class="rbc-btn" onclick="handleBookClick()">احجز الآن</button>
+                <button class="rbc-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>
             </div>
           </div>
         </div>
@@ -1190,8 +1226,8 @@ function viewDetail(id){
 	                  <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
 	                </div>
 	                <div class="bf-form-footer">
-	                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
-	                </div>
+	                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">إرسال طلب الحجز</button>
+                    <button class="book-wa-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>	                </div>
 	              </div>
 	            </div>
 	          </div>
@@ -1201,6 +1237,7 @@ function viewDetail(id){
 	              <div class="rbc-price" id="abSidePrice">${fmtPrice(l.price,true)} <small>/ يوم</small></div>
 	              <div class="rbc-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>
 	              <button class="rbc-btn" onclick="handleBookClick()">احجز الآن</button>
+                <button class="rbc-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:10px">تواصل مع الإدارة</button>
 	            </div>
 	          </div>
 	        </div>
@@ -1241,8 +1278,7 @@ function viewDetail(id){
         <div class="det-desc-container af s2">
 	          <div class="det-desc"><h3 class="det-desc-title">الوصف</h3>${esc(l.desc)}</div>
 	          <div class="det-actions">
-	            <button class="det-wa-btn" onclick="openChat('${l.id}')">💬 تواصل عبر الدردشة</button>
-	            <a class="det-wa-btn" href="tel:+${(l.phone||'963983127483').replace(/[^0-9]/g,'')}" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:#F6921E;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.11 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg> اتصال مباشر</a>
+	            	            <a class="det-wa-btn" href="tel:+${(l.phone||'963983127483').replace(/[^0-9]/g,'')}" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:#F6921E;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.11 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg> اتصال مباشر</a>
 	          </div>
         </div>
       </div>`;
@@ -1272,7 +1308,8 @@ function viewDetail(id){
 	        <div class="det-desc-container af s3">
 	          <div class="det-desc"><h3 class="det-desc-title">الوصف</h3>${esc(l.desc)}</div>
 	          <div class="det-actions">
-	            <button class="det-wa-btn" onclick="openChat('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
+	            <button class="det-wa-btn" onclick="submitPurchaseRequest('${l.id}')">إرسال طلب شراء</button>
+	            <button class="det-wa-btn" onclick="openChat('${l.id}')" style="background:#fff;color:var(--primary);border:1.5px solid var(--primary);margin-top:12px">تواصل مع الإدارة</button>
 	          </div>
 	        </div>
 	      </div>`;
@@ -1304,6 +1341,111 @@ function buildDetailSpecs(l,apt){
       ${isRent(l.catId)?'':`<div class="det-sp">${ICON.km}<div><div class="sp-label">المسافة</div><div class="sp-val">${l.carKm?l.carKm.toLocaleString()+' كم':'—'}</div></div></div>`}`;
   }
 }
+
+/* ===== قالب الإيجار بأسلوب Gathern (رأس → معرض → عمودان) ===== */
+function gathernRentalHTML(l, cat, imgs, badgeClass){
+  var apt = isApt(l.catId);
+  var specsHTML = buildDetailSpecs(l, apt);
+  var mapHTML = buildMapSection(l.location);
+  window._gdImgs = imgs; window._gdIdx = 0;
+  var arrows = imgs.length>1 ? ('<button class="gd-arrow prev" onclick="event.stopPropagation();window._gdNav(1)">'+ICON.prev+'</button><button class="gd-arrow next" onclick="event.stopPropagation();window._gdNav(-1)">'+ICON.next+'</button>') : '';
+  var gal;
+  if(imgs.length<=1){
+    gal = '<div class="gd-gallery one"><div class="gd-g-main">'+(imgs.length?'<img id="gdMainImg" src="'+imgs[0]+'" alt="" onclick="openLightbox(0)">':'')+'</div></div>';
+  } else {
+    var thumbs = imgs.slice(1,5).map(function(s,i){ return '<img src="'+s+'" alt="" onclick="openLightbox('+(i+1)+')">'; }).join('');
+    gal = '<div class="gd-gallery grid">'
+      + '<div class="gd-g-main"><img id="gdMainImg" src="'+imgs[0]+'" alt="" onclick="openLightbox(window._gdIdx||0)">'+arrows+'</div>'
+      + '<div class="gd-g-thumbs">'+thumbs+'</div>'
+      + (imgs.length>5?'<button class="gd-g-all" onclick="openLightbox(0)">عرض كل الصور ('+imgs.length+')</button>':'')
+      + '</div>';
+  }
+  var tags = [];
+  tags.push(esc(l.neighborhood ? (l.neighborhood+' / '+l.city) : l.location));
+  tags.push(esc(cat.label));
+  if(l.negotiable) tags.push('قابل للتفاوض');
+  var tagsHTML = tags.map(function(t){ return '<span class="gd-tag">'+t+'</span>'; }).join('');
+  return ''
+    + '<div class="gd">'
+    + '<div class="gd-header"><div class="gd-h-row"><h1 class="gd-title">'+esc(l.title)+'</h1>'
+    +   '<div class="gd-h-actions">'
+    +     '<button class="gd-ico" onclick="shareListing(\''+l.id+'\')" title="مشاركة">'+ICON.share+'</button>'
+    +     '<button class="gd-ico fav-btn'+(isFav(l.id)?' on':'')+'" data-id="'+l.id+'" onclick="toggleFav(\''+l.id+'\',event)" title="المفضلة">'+ICON_HEART+'</button>'
+    +   '</div></div>'
+    +   '<div class="gd-tags">'+tagsHTML+'</div></div>'
+    + gal
+    + '<div class="gd-body">'
+    +   '<main class="gd-main">'
+    +     '<section class="gd-sec"><h3 class="gd-sec-t">الوصف</h3><div class="gd-desc">'+esc(l.desc)+'</div></section>'
+    +     (specsHTML?'<section class="gd-sec"><h3 class="gd-sec-t">'+(apt?'المرافق':'المواصفات والمميزات')+'</h3><div class="det-specs">'+specsHTML+'</div></section>':'')
+    +     '<section class="gd-sec"><h3 class="gd-sec-t">الموقع</h3>'+mapHTML+'</section>'
+    +   '</main>'
+    +   '<aside class="gd-booking"><div class="gd-card">'
+    +     '<div class="gd-price">'+fmtPrice(l.price,true)+' <small>/ يوم</small></div>'
+    +     '<div class="gd-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>'
+    +     '<button class="gd-btn primary" onclick="handleBookClick()">احجز الآن</button>'
+    +     '<button class="gd-btn ghost" onclick="openChat(\''+l.id+'\')">تواصل مع الإدارة</button>'
+    +   '</div></aside>'
+    + '</div>'
+    + '</div>';
+}
+window._gdNav = function(d){
+  var n=(window._gdImgs||[]).length; if(n<2) return;
+  window._gdIdx=((window._gdIdx||0)+d+n)%n;
+  var im=document.getElementById('gdMainImg');
+  if(im){ im.src=window._gdImgs[window._gdIdx]; im.setAttribute('onclick','openLightbox('+window._gdIdx+')'); }
+};
+(function(){
+  var c = ''
+  + '.gd{max-width:1080px;margin:0 auto}'
+  + '.gd-g-main{position:relative}'
+  + '.gd-arrow{position:absolute;top:50%;transform:translateY(-50%);width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.92);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 10px rgba(0,0,0,.18);z-index:3}'
+  + '.gd-arrow svg{width:20px;height:20px;color:#0f172a}'
+  + '.gd-arrow.prev{right:24px}.gd-arrow.next{left:24px}'
+  + '@media(min-width:1024px){.gd-arrow{display:none}}'
+  + '.gd-topbar{display:flex;justify-content:space-between;padding:12px 16px}'
+  + '.gd-ico{width:42px;height:42px;border-radius:50%;border:1px solid #e2e8f0;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.06)}'
+  + '.gd-ico svg{width:20px;height:20px;color:#475569}'
+  + '.gd-header{padding:14px 16px}'
+  + '.gd-h-row{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}'
+  + '.gd-h-actions{display:flex;gap:8px;flex-shrink:0}'
+  + '.gd-h-actions .gd-ico{width:42px;height:42px}'
+  + '.gd-h-actions .gd-ico svg{width:20px;height:20px;color:#475569}'
+  + '.fav-btn svg{width:22px;height:22px;fill:none;stroke:#475569;stroke-width:1.8}'
+  + '.fav-btn.on svg{fill:#ef4444;stroke:#ef4444}'
+  + '.card-fav{position:absolute;top:10px;left:10px;z-index:6;width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.92);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,.15)}'
+  + '.card-fav svg{width:18px;height:18px}'
+  + '.gd-title{font-size:22px;font-weight:900;color:#0f172a;margin:0 0 10px;line-height:1.4}'
+  + '.gd-tags{display:flex;flex-wrap:wrap;gap:8px}'
+  + '.gd-tag{background:#f1f5f9;color:#475569;padding:5px 11px;border-radius:8px;font-size:12px;font-weight:700}'
+  + '.gd-gallery{padding:0 16px;position:relative}'
+  + '.gd-gallery img{width:100%;object-fit:cover;cursor:pointer;display:block}'
+  + '.gd-gallery.one img,.gd-g-main img{height:300px;border-radius:16px}'
+  + '.gd-g-thumbs{display:none}'
+  + '.gd-g-all{position:absolute;bottom:12px;left:28px;background:rgba(0,0,0,.7);color:#fff;border:none;border-radius:10px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}'
+  + '.gd-body{padding:18px 16px 70px;display:flex;flex-direction:column;gap:22px}'
+  + '.gd-booking{order:-1}'
+  + '.gd-card{background:#fff;border:1px solid #eef2f7;border-radius:18px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,.08)}'
+  + '.gd-price{font-size:24px;font-weight:900;color:#0f172a;text-align:center}'
+  + '.gd-price small{font-size:13px;color:#94a3b8;font-weight:600}'
+  + '.gd-dates{font-size:13px;color:#64748b;text-align:center;margin:8px 0 16px;padding-bottom:14px;border-bottom:1px solid #f1f5f9}'
+  + '.gd-btn{width:100%;padding:15px;border:none;border-radius:13px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:10px}'
+  + '.gd-btn.primary{background:#F6921E;color:#fff;margin-top:0}'
+  + '.gd-btn.ghost{background:#fff;color:var(--primary,#0D9488);border:1.5px solid var(--primary,#0D9488)}'
+  + '.gd-sec-t{font-size:17px;font-weight:800;color:#0f172a;margin:0 0 12px}'
+  + '.gd-desc{font-size:15.5px;color:#374151;line-height:2.1;white-space:pre-wrap;background:#f8fafc;border:1px solid #eef2f7;border-radius:14px;padding:18px;min-height:110px}'
+  + '@media(min-width:1024px){'
+  +   '.gd-gallery.grid{display:flex;gap:10px;height:440px;padding:0}'
+  +   '.gd-g-main{flex:2}.gd-g-main img{height:440px;border-radius:18px}'
+  +   '.gd-g-thumbs{display:grid;flex:1;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px}'
+  +   '.gd-g-thumbs img{height:100%;border-radius:14px}'
+  +   '.gd-gallery{padding:0}'
+  +   '.gd-body{flex-direction:row;align-items:flex-start;gap:30px;padding:24px 0 60px}'
+  +   '.gd-main{flex:1;order:1;min-width:0}'
+  +   '.gd-booking{flex:0 0 340px;order:2;position:sticky;top:80px}'
+  + '}';
+  var s=document.createElement('style'); s.textContent=c; document.head.appendChild(s);
+})();
 
 /* ===== MONTHLY/DAILY RENT TOGGLE ===== */
 let _selectedMonths=null;
@@ -1373,23 +1515,29 @@ function submitMonthlyBooking(id){
   if(!name||!phone){alert('يرجى تعبئة الاسم ورقم الهاتف');return;}
   if(_selectedMonths === undefined || _selectedMonths === null){alert('يرجى اختيار مدة الإيجار');return;}
   const cat=getCat(l.catId);
-  let msg='🔔 *طلب إيجار شهري جديد*\n';
-  msg+='━━━━━━━━━━━━━━━━━\n';
-  if(l.ref) msg+='🔖 رمز الإعلان: '+l.ref+'\n';msg+='\n';
-  msg+='📌 *'+l.title+'*\n';
-  msg+='🏷️ '+cat.label+'\n';
-  msg+='📍 '+l.location+'، جبلة\n\n';
-  msg+='📆 *تفاصيل الإيجار:*\n';
-  msg+='▫️ نوع الإيجار: شهري\n';
-  msg+='▫️ المدة: '+(_selectedMonths===-1?'♾️ مدة غير محددة':_selectedMonths+' شهر')+'\n';
-  msg+='▫️ الإيجار الشهري: '+fmtPrice(l.price*30)+'\n';
-  if(_selectedMonths>0) msg+='▫️ 💰 *الإجمالي: '+fmtPrice(l.price*30*_selectedMonths)+'*\n';
-  else msg+='▫️ 💰 الإجمالي: يُتفق عليه\n';
-  msg+='\n👤 *معلومات المستأجر:*\n';
-  msg+='▫️ الاسم: '+name+' '+last+'\n';
-  msg+='▫️ الهاتف: '+phone+'\n';
-  msg+='\n✅ بانتظار التأكيد\nشكراً لكم 🙏';
-  if (window.openChat) { openChat(l.id, msg); }
+  let msg='📋 طلب إيجار شهري\n';
+  if(l.ref) msg+='رمز الإعلان: '+l.ref+'\n';
+  msg+='الإعلان: '+l.title+'\n';
+  msg+='القسم: '+cat.label+'\n';
+  msg+='الموقع: '+l.location+'، جبلة\n';
+  msg+='\nتفاصيل الإيجار:\n';
+  msg+='• النوع: شهري\n';
+  msg+='• المدة: '+(_selectedMonths===-1?'غير محددة':_selectedMonths+' شهر')+'\n';
+  msg+='• الإيجار الشهري: '+fmtPrice(l.price*30)+'\n';
+  if(_selectedMonths>0) msg+='• الإجمالي: '+fmtPrice(l.price*30*_selectedMonths)+'\n';
+  else msg+='• الإجمالي: يُتفق عليه\n';
+  msg+='\nمعلوماتي:\n';
+  msg+='• الاسم: '+name+' '+last+'\n';
+  msg+='• الهاتف: '+phone+'\n';
+  msg+='\nبانتظار تأكيدكم، شكراً 🙏';
+  if (window.submitBookingRequest) {
+    submitBookingRequest({
+      adId:l.id, adRef:l.ref||'', adTitle:l.title||'', adCatId:l.catId||'', adImage:(l.images&&l.images[0])||'',
+      dealType:'monthly', months:(_selectedMonths>0?_selectedMonths:null),
+      priceDaily:l.price, totalPrice:(_selectedMonths>0?l.price*30*_selectedMonths:null),
+      clientName:(name+' '+last).trim(), clientPhone:phone, summary:msg
+    });
+  }
 }
 
 function closeRentDetail(){
@@ -1403,21 +1551,36 @@ function scrollToCal(){
   if(el)el.scrollIntoView({behavior:'smooth',block:'center'});
 }
 
-function handleBookClick(){
-  if(!_calStart||!_calEnd){
-    scrollToCal();
-    // Flash the calendar
-    const box=document.getElementById('calBox');
-    if(box){box.style.borderColor='var(--primary)';box.style.boxShadow='0 0 0 3px rgba(0,0,0,.15)';setTimeout(()=>{box.style.borderColor='#f0f0f0';box.style.boxShadow='none';},1500);}
-    return;
-  }
-  // Show booking form
-  const form=document.getElementById('bookFormSection');
-  if(form){
-    form.style.display='block';
-    form.scrollIntoView({behavior:'smooth',block:'center'});
-  }
+// إرسال طلب شراء لإعلان بيع
+function submitPurchaseRequest(id){
+  var l=listings.find(x=>String(x.id)===String(id))||window._currentListing; if(!l)return;
+  if(!window.submitBookingRequest) return;
+  if(!confirm('إرسال طلب شراء لهذا الإعلان؟ ستتواصل معك الإدارة.')) return;
+  submitBookingRequest({
+    adId:l.id, adRef:l.ref||'', adTitle:l.title||'', adCatId:l.catId||'', adImage:(l.images&&l.images[0])||'',
+    dealType:'sale', priceDaily:null, totalPrice:l.price||null
+  });
 }
+
+// تعبئة نماذج الحجز/التواصل تلقائياً من معلومات حساب المستخدم (مثل Airbnb)
+function prefillContactFields(){
+  var info = (window.currentUserInfo && window.currentUserInfo()) || null;
+  if(!info) return;
+  var parts = (info.name||'').trim().split(/\s+/);
+  var first = parts.shift() || '';
+  var last = parts.join(' ');
+  var setv = function(id,v){ var el=document.getElementById(id); if(el && !el.value) el.value = v||''; };
+  setv('bfName',first); setv('bfLast',last); setv('bfPhone',info.phone); setv('bfAddress',info.address);
+  setv('mbfName',first); setv('mbfLast',last); setv('mbfPhone',info.phone);
+}
+
+function handleBookClick(){
+  // افتح نافذة الحجز متعدّدة الخطوات (ملء الشاشة)
+  var l = window._currentListing;
+  if(window.openBooking && l){ openBooking(l.id); }
+}
+// كشف دالة تحديث الأيام المعطّلة لنافذة الحجز
+window.refreshBlockedDates = function(){ return (typeof loadBlockedDates==='function') ? loadBlockedDates() : Promise.resolve(); };
 
 function submitBooking(id){
   const l=listings.find(x=>String(x.id)===String(id))||window._currentListing;if(!l)return;
@@ -1438,28 +1601,35 @@ function submitBooking(id){
   
   const d=(_calStart&&_calEnd)?Math.round((_calEnd-_calStart)/864e5)+1:0;
   const cat=getCat(l.catId);
-  let msg='🔔 *طلب حجز جديد*\n';
-  msg+='━━━━━━━━━━━━━━━━━\n';
-  if(l.ref) msg+='🔖 رمز الإعلان: '+l.ref+'\n';msg+='\n';
-  msg+='📌 *'+l.title+'*\n';
-  msg+='🏷️ '+cat.label+'\n';
-  msg+='📍 '+l.location+'، جبلة\n\n';
+  let msg='📋 طلب حجز جديد\n';
+  if(l.ref) msg+='رمز الإعلان: '+l.ref+'\n';
+  msg+='الإعلان: '+l.title+'\n';
+  msg+='القسم: '+cat.label+'\n';
+  msg+='الموقع: '+l.location+'، جبلة\n';
   if(_calStart&&_calEnd){
-    msg+='📆 *تفاصيل الحجز:*\n';
-    msg+='▫️ تاريخ البداية: '+fmtDate(_calStart)+'\n';
-    msg+='▫️ تاريخ النهاية: '+fmtDate(_calEnd)+'\n';
-    msg+='▫️ عدد الأيام: '+d+' يوم\n';
-    msg+='▫️ السعر اليومي: '+fmtPrice(l.price)+'\n';
-    msg+='▫️ 💰 *الإجمالي: '+fmtPrice(l.price*d)+'*\n\n';
+    msg+='\nتفاصيل الحجز:\n';
+    msg+='• من: '+fmtDate(_calStart)+'\n';
+    msg+='• إلى: '+fmtDate(_calEnd)+'\n';
+    msg+='• المدة: '+d+' يوم\n';
+    msg+='• السعر اليومي: '+fmtPrice(l.price)+'\n';
+    msg+='• الإجمالي: '+fmtPrice(l.price*d)+'\n';
   }
-  msg+='👤 *معلومات المستأجر:*\n';
-  msg+='▫️ الاسم: '+name+' '+last+'\n';
-  msg+='▫️ الهاتف: '+phone+'\n';
-  if(address)msg+='▫️ العنوان: '+address+'\n';
-  if(email)msg+='▫️ الإيميل: '+email+'\n';
-  msg+='\n✅ بانتظار التأكيد\nشكراً لكم 🙏';
+  msg+='\nمعلوماتي:\n';
+  msg+='• الاسم: '+name+' '+last+'\n';
+  msg+='• الهاتف: '+phone+'\n';
+  if(address)msg+='• العنوان: '+address+'\n';
+  if(email)msg+='• الإيميل: '+email+'\n';
+  msg+='\nبانتظار تأكيدكم، شكراً 🙏';
   
-  if (window.openChat) { openChat(l.id, msg); }
+  if (window.submitBookingRequest) {
+    var _iso=function(dt){return dt?dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'):null;};
+    submitBookingRequest({
+      adId:l.id, adRef:l.ref||'', adTitle:l.title||'', adCatId:l.catId||'', adImage:(l.images&&l.images[0])||'',
+      dealType:'rent', dateFrom:_iso(_calStart), dateTo:_iso(_calEnd), days:d,
+      priceDaily:l.price, totalPrice:(_calStart&&_calEnd?l.price*d:null),
+      clientName:(name+' '+last).trim(), clientPhone:phone, clientAddress:address, summary:msg
+    });
+  }
 }
 
 function showBookConfirm(){
@@ -1869,7 +2039,25 @@ if (USE_FIREBASE) {
   restoreState();
   hideSplash();
 }
+
+// تحديث لحظي: عند أي تغيير في الإعلانات يُعاد التحميل وتُحدَّث الصفحة فوراً
+// (Supabase لا يحاسب على القراءات، فالتحديث اللحظي مُفعَّل للسرعة)
+if (USE_FIREBASE) {
+  supabaseClient.channel('public-ads')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'ads' }, function () {
+      supabaseClient.from('ads').select('*').eq('status', 'active').order('created_at', { ascending: false })
+        .then(function (res) {
+          listings = (res.data || []).map(mapRow);
+          var active = document.querySelector('.page.act');
+          var id = active ? active.id : '';
+          if (id === 'page-home') renderHome();
+          else if (id === 'page-listings') renderListings(true);
+        });
+    }).subscribe();
+}
+
 function hideSplash(){
+  try{updateFavCount();}catch(e){}
   var hf=document.getElementById('hideFlash');if(hf)hf.remove();
   var isReload=false;try{isReload=performance.getEntriesByType('navigation')[0].type==='reload';}catch(e){}
   var rs=document.getElementById('refreshSplash');

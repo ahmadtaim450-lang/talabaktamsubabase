@@ -14,6 +14,7 @@
   var _channel = null;       // اشتراك Realtime
   var _pendingAdId = null;   // إعلان ننتظر الدخول لفتح دردشته
   var _pendingMsg = null;    // رسالة محجوزة (تفاصيل حجز) تُعبّأ بعد الدخول
+  var _pendingBooking = null;// طلب حجز ننتظر الدخول لإرساله
 
   /* ---------- 1) حقن الأنماط ---------- */
   var css = ''
@@ -51,7 +52,37 @@
     + '.ac-chat-foot input{flex:1;padding:12px 14px;border:1.5px solid #e2e8f0;border-radius:24px;font-size:.92rem;font-family:inherit;outline:none}'
     + '.ac-chat-foot input:focus{border-color:#F6921E}'
     + '.ac-chat-foot button{flex-shrink:0;width:46px;height:46px;border-radius:50%;border:none;background:#F6921E;color:#fff;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center}'
-    + '.ac-empty{margin:auto;text-align:center;color:#94a3b8;font-size:.85rem;padding:20px}';
+    + '.ac-empty{margin:auto;text-align:center;color:#94a3b8;font-size:.85rem;padding:20px}'
+    /* كتلة الحساب في القائمة الجانبية */
+    + '.ac-acct{display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:6px;background:linear-gradient(135deg,#fff7ed,#ffedd5);border-radius:14px}'
+    + '.ac-acct-av{width:42px;height:42px;border-radius:50%;background:#F6921E;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.1rem;flex-shrink:0}'
+    + '.ac-acct-nm{font-weight:800;color:#0f172a;font-size:.95rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+    + '.ac-acct-sub{font-size:.72rem;color:#94a3b8;font-weight:600}'
+    /* قائمة محادثاتي */
+    + '.ac-mylist{flex:1;overflow-y:auto;padding:6px 0}'
+    + '.ac-myitem{padding:13px 16px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:flex;flex-direction:column;gap:3px}'
+    + '.ac-myitem:hover{background:#f8fafc}'
+    + '.ac-myitem .t{font-weight:700;color:#0f172a;font-size:.9rem}'
+    + '.ac-myitem .d{font-size:.72rem;color:#94a3b8}'
+    + '.ac-guest-hint{margin-top:10px;text-align:center;font-size:.78rem;color:#94a3b8}'
+    + '.ac-guest-hint a{color:#F6921E;font-weight:700;cursor:pointer}'
+    /* ملء الشاشة: الدردشة + قائمة محادثاتي */
+    + '.ac-chat{inset:0;height:100%;max-height:none;border-radius:0;box-shadow:none}'
+    + '@media(min-width:600px){.ac-chat{inset:0;width:auto;height:100%;max-height:none;border-radius:0;box-shadow:none}}'
+    + '.ac-chat-head{border-radius:0}'
+    + '.ac-chat-body,.ac-mylist{max-width:760px;width:100%;margin:0 auto}'
+    + '.ac-chat-foot{max-width:760px;width:100%;margin:0 auto;box-sizing:border-box}'
+    /* ملء الشاشة: تسجيل الدخول / إنشاء حساب */
+    + '#acAuthOverlay,#acProfOverlay{padding:0}'
+    + '#acAuthOverlay .ac-card,#acProfOverlay .ac-card{width:100%;height:100%;max-width:none;max-height:none;border-radius:0;box-shadow:none;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow-y:auto;padding:24px}'
+    + '#acAuthOverlay .ac-card>*,#acProfOverlay .ac-card>*{width:100%;max-width:420px}'
+    /* أيقونة البروفايل في الهيدر (لابتوب فقط) */
+    + '.header-profile-btn{display:flex;background:#f1f3f7;border:none;cursor:pointer;width:46px;height:46px;border-radius:14px;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s;padding:0}'
+    + '.header-profile-btn svg{width:32px;height:32px;display:block}'
+    + '.header-profile-btn:hover{background:#e7eaf0}'
+    /* ترتيب الموبايل: القائمة يمين، اللوغو وسط، الحساب يسار */
+    + '.hdr-actions{display:flex;align-items:center;gap:8px}'
+    + '@media(max-width:1023px){.hdr-actions{display:contents}.header .menu-btn{order:0}.header .logo{order:1;flex:1;justify-content:center}.header .header-profile-btn{order:2}.header .desktop-nav{order:3}}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
   /* ---------- 2) حقن DOM ---------- */
@@ -61,11 +92,14 @@
     + '  <h3 id="acTitle">تسجيل الدخول</h3>'
     + '  <p class="sub" id="acSub">سجّل دخولك لتتواصل مع الإدارة عبر الدردشة</p>'
     + '  <div class="ac-msg" id="acMsg"></div>'
-    + '  <div class="ac-field" id="acNameField" style="display:none"><label>الاسم</label><input id="acName" type="text" placeholder="اسمك"></div>'
+    + '  <div class="ac-field" id="acNameField" style="display:none"><label>الاسم</label><input id="acName" type="text" placeholder="اسمك الكامل"></div>'
+    + '  <div class="ac-field" id="acPhoneField" style="display:none"><label>رقم الهاتف</label><input id="acPhone" type="tel" inputmode="numeric" placeholder="09xxxxxxxx" dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
+    + '  <div class="ac-field" id="acAddressField" style="display:none"><label>العنوان <span style="color:#94a3b8;font-weight:600">(اختياري)</span></label><input id="acAddress" type="text" placeholder="المدينة، الحي"></div>'
     + '  <div class="ac-field"><label>البريد الإلكتروني</label><input id="acEmail" type="email" placeholder="you@email.com" dir="ltr"></div>'
     + '  <div class="ac-field"><label>كلمة المرور</label><input id="acPass" type="password" placeholder="••••••••" dir="ltr"></div>'
     + '  <button class="ac-btn" id="acSubmit" onclick="window._acSubmit()">دخول</button>'
     + '  <div class="ac-switch" id="acSwitch">ليس لديك حساب؟ <a onclick="window._acToggle()">أنشئ حساباً</a></div>'
+    + '  <div class="ac-guest-hint">أو <a onclick="window._acCloseAuth()">تابع التصفّح كزائر</a></div>'
     + '</div>';
   var authOverlay = document.createElement('div');
   authOverlay.className = 'ac-overlay'; authOverlay.id = 'acAuthOverlay'; authOverlay.innerHTML = authHtml;
@@ -80,6 +114,32 @@
     + '<div class="ac-chat-foot"><input id="acChatInput" placeholder="اكتب رسالتك..." onkeydown="if(event.key===\'Enter\')window._acSend()"><button onclick="window._acSend()">&#10148;</button></div>';
   document.body.appendChild(chatEl);
 
+  // نافذة "حسابي" — تعديل الاسم/الهاتف/العنوان
+  var profHtml = ''
+    + '<div class="ac-card" style="position:relative">'
+    + '  <button class="ac-close" onclick="window._acCloseProfile()">&times;</button>'
+    + '  <h3>حسابي</h3>'
+    + '  <p class="sub" id="acProfEmail"></p>'
+    + '  <div class="ac-msg" id="acProfMsg"></div>'
+    + '  <div class="ac-field"><label>الاسم</label><input id="acProfName" type="text"></div>'
+    + '  <div class="ac-field"><label>رقم الهاتف</label><input id="acProfPhone" type="tel" inputmode="numeric" dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
+    + '  <div class="ac-field"><label>العنوان <span style="color:#94a3b8;font-weight:600">(اختياري)</span></label><input id="acProfAddress" type="text"></div>'
+    + '  <button class="ac-btn" id="acProfSave" onclick="window._acSaveProfile()">حفظ التعديلات</button>'
+    + '  <div class="ac-switch"><a onclick="window._acLogout()" style="color:#ef4444">تسجيل الخروج</a></div>'
+    + '</div>';
+  var profOverlay = document.createElement('div');
+  profOverlay.className = 'ac-overlay'; profOverlay.id = 'acProfOverlay'; profOverlay.innerHTML = profHtml;
+  document.body.appendChild(profOverlay);
+
+  // قائمة "محادثاتي"
+  var myChats = document.createElement('div');
+  myChats.className = 'ac-chat'; myChats.id = 'acMyChats';
+  myChats.innerHTML = ''
+    + '<div class="ac-chat-head"><div><div class="t">محادثاتي</div><div class="s">دردشاتك مع الإدارة</div></div>'
+    + '<button onclick="window._acCloseMyChats()">&times;</button></div>'
+    + '<div class="ac-mylist" id="acMyList"></div>';
+  document.body.appendChild(myChats);
+
   /* ---------- 3) أدوات ---------- */
   var _signupMode = false;
   function showAuthMsg(t, ok) { var m = document.getElementById('acMsg'); m.textContent = t; m.className = 'ac-msg ' + (ok ? 'ok' : 'err'); }
@@ -89,12 +149,17 @@
 
   /* ---------- 4) المصادقة ---------- */
   window._acOpenAuth = function (adId, prefill) { _pendingAdId = adId || null; _pendingMsg = prefill || null; clearAuthMsg(); document.getElementById('acAuthOverlay').classList.add('show'); };
-  window._acCloseAuth = function () { document.getElementById('acAuthOverlay').classList.remove('show'); };
+  window._acCloseAuth = function () {
+    document.getElementById('acAuthOverlay').classList.remove('show');
+    try { sessionStorage.setItem('ac_welcomed', '1'); } catch (e) {}
+  };
   window._acToggle = function () {
     _signupMode = !_signupMode;
     document.getElementById('acTitle').textContent = _signupMode ? 'إنشاء حساب' : 'تسجيل الدخول';
     document.getElementById('acSubmit').textContent = _signupMode ? 'إنشاء الحساب' : 'دخول';
     document.getElementById('acNameField').style.display = _signupMode ? 'block' : 'none';
+    document.getElementById('acPhoneField').style.display = _signupMode ? 'block' : 'none';
+    document.getElementById('acAddressField').style.display = _signupMode ? 'block' : 'none';
     document.getElementById('acSwitch').innerHTML = _signupMode
       ? 'لديك حساب؟ <a onclick="window._acToggle()">سجّل الدخول</a>'
       : 'ليس لديك حساب؟ <a onclick="window._acToggle()">أنشئ حساباً</a>';
@@ -108,11 +173,14 @@
       .trim().toLowerCase();
     var pass = document.getElementById('acPass').value;
     var name = document.getElementById('acName').value.trim();
+    var phone = document.getElementById('acPhone').value.trim();
+    var address = document.getElementById('acAddress').value.trim();
     if (!email || !pass) { showAuthMsg('أدخل البريد وكلمة المرور'); return; }
+    if (_signupMode && (!name || !phone)) { showAuthMsg('أدخل الاسم ورقم الهاتف'); return; }
     var btn = document.getElementById('acSubmit'); btn.disabled = true; var lbl = btn.textContent; btn.textContent = 'جارٍ...';
     try {
       if (_signupMode) {
-        var r = await sb.auth.signUp({ email: email, password: pass, options: { data: { full_name: name } } });
+        var r = await sb.auth.signUp({ email: email, password: pass, options: { data: { full_name: name, phone: phone, address: address } } });
         if (r.error) throw r.error;
         if (!r.data.session) { showAuthMsg('تم الإنشاء! تحقّق من بريدك لتفعيل الحساب ثم سجّل الدخول.', true); _signupMode = false; }
         else { onLoggedIn(r.data.user); }
@@ -134,13 +202,125 @@
     } finally { btn.disabled = false; btn.textContent = lbl; }
   };
 
-  function onLoggedIn(user) {
+  // فحص الحظر: إن كان الحساب محظوراً سجّل خروجه فوراً
+  async function checkBlocked() {
+    if (!_user) return false;
+    try {
+      var r = await sb.from('profiles').select('blocked').eq('user_id', _user.id).maybeSingle();
+      if (r.data && r.data.blocked) {
+        await sb.auth.signOut(); _user = null; renderAccountBlock();
+        alert('تم حظر حسابك. للاستفسار تواصل مع الإدارة.');
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  async function onLoggedIn(user) {
     _user = user;
+    if (await checkBlocked()) return;
+    renderAccountBlock();
     window._acCloseAuth();
+    if (_pendingBooking) { var b = _pendingBooking; _pendingBooking = null; window.submitBookingRequest(b); return; }
     if (_pendingAdId != null) { var id = _pendingAdId; var msg = _pendingMsg; _pendingAdId = null; _pendingMsg = null; openChat(id, msg); }
   }
 
-  window._acLogout = async function () { await sb.auth.signOut(); _user = null; window._acCloseChat(); };
+  // إرسال طلب حجز إلى الإدارة (سجلّ في جدول bookings) + فتح الدردشة للتواصل
+  window.submitBookingRequest = async function (data) {
+    if (!_user) { var s = await sb.auth.getUser(); _user = s.data ? s.data.user : null; }
+    if (!_user) { _pendingBooking = data; window._acOpenAuth(data.adId); return; }
+    if (await checkBlocked()) return;
+    var md = _user.user_metadata || {};
+    var row = {
+      ad_id: data.adId != null ? data.adId : null, user_id: _user.id,
+      ad_ref: data.adRef || '', ad_title: data.adTitle || '', ad_cat_id: data.adCatId || '', ad_image: data.adImage || '',
+      client_name: data.clientName || md.full_name || '',
+      client_phone: data.clientPhone || md.phone || '',
+      client_address: data.clientAddress || md.address || '',
+      deal_type: data.dealType || 'rent',
+      date_from: data.dateFrom || null, date_to: data.dateTo || null,
+      days: data.days || null, months: data.months || null,
+      price_daily: data.priceDaily || null, total_price: data.totalPrice || null,
+      status: 'pending'
+    };
+    var r = await sb.from('bookings').insert(row);
+    if (r.error) { alert('تعذّر إرسال الطلب: ' + r.error.message); return; }
+    alert(data.dealType === 'sale'
+      ? 'تم إرسال طلب الشراء للإدارة ✓\nسنتواصل معك قريباً.'
+      : 'تم إرسال طلب الحجز للإدارة ✓\nسنؤكّده قريباً.');
+  };
+
+  window._acLogout = async function () {
+    await sb.auth.signOut(); _user = null;
+    window._acCloseChat(); window._acCloseProfile && window._acCloseProfile();
+    renderAccountBlock();
+  };
+
+  /* ---------- معلومات المستخدم (للتعبئة التلقائية في الحجز) ---------- */
+  window.currentUserInfo = function () {
+    if (!_user) return null;
+    var md = _user.user_metadata || {};
+    return { name: md.full_name || '', phone: md.phone || '', address: md.address || '', email: _user.email || '' };
+  };
+  window.isLoggedIn = function () { return !!_user; };
+  // زرّ الحساب في الهيدر: يفتح "حسابي" إن كان داخلاً، وإلا نافذة الدخول
+  window._acAccount = function () { if (_user) window._acOpenProfile(); else window._acOpenAuth(); };
+
+  /* ---------- كتلة "حسابي" في القائمة الجانبية ---------- */
+  function svgIcon(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
+  function renderAccountBlock() {
+    // الحساب صار عبر أيقونة الهيدر — أزل أي كتلة قديمة من القائمة الجانبية
+    var blk = document.getElementById('acAccountBlock'); if (blk) blk.remove();
+  }
+
+  /* ---------- نافذة "حسابي" ---------- */
+  window._acOpenProfile = function () {
+    if (!_user) { window._acOpenAuth(); return; }
+    var md = _user.user_metadata || {};
+    document.getElementById('acProfEmail').textContent = _user.email || '';
+    document.getElementById('acProfName').value = md.full_name || '';
+    document.getElementById('acProfPhone').value = md.phone || '';
+    document.getElementById('acProfAddress').value = md.address || '';
+    document.getElementById('acProfMsg').className = 'ac-msg';
+    document.getElementById('acProfOverlay').classList.add('show');
+  };
+  window._acCloseProfile = function () { var o = document.getElementById('acProfOverlay'); if (o) o.classList.remove('show'); };
+  window._acSaveProfile = async function () {
+    var name = document.getElementById('acProfName').value.trim();
+    var phone = document.getElementById('acProfPhone').value.trim();
+    var address = document.getElementById('acProfAddress').value.trim();
+    var m = document.getElementById('acProfMsg');
+    if (!name || !phone) { m.textContent = 'أدخل الاسم ورقم الهاتف'; m.className = 'ac-msg err'; return; }
+    var btn = document.getElementById('acProfSave'); btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
+    var r = await sb.auth.updateUser({ data: { full_name: name, phone: phone, address: address } });
+    btn.disabled = false; btn.textContent = 'حفظ التعديلات';
+    if (r.error) { m.textContent = 'تعذّر: ' + r.error.message; m.className = 'ac-msg err'; return; }
+    _user = r.data.user; renderAccountBlock();
+    m.textContent = 'تم الحفظ ✓'; m.className = 'ac-msg ok';
+  };
+
+  /* ---------- قائمة "محادثاتي" ---------- */
+  window._acOpenMyChats = async function () {
+    if (!_user) { window._acOpenAuth(); return; }
+    document.getElementById('acMyChats').classList.add('show');
+    var box = document.getElementById('acMyList');
+    box.innerHTML = '<div class="ac-empty">جارٍ التحميل...</div>';
+    var r = await sb.from('conversations').select('*').eq('user_id', _user.id).order('last_message_at', { ascending: false });
+    if (r.error) { box.innerHTML = '<div class="ac-empty">تعذّر التحميل</div>'; return; }
+    if (!r.data || !r.data.length) { box.innerHTML = '<div class="ac-empty">لا توجد محادثات بعد</div>'; return; }
+    box.innerHTML = r.data.map(function (c) {
+      var t = c.subject ? ('بخصوص: ' + c.subject) : 'الدردشة مع الإدارة';
+      return '<div class="ac-myitem" onclick="window._acOpenFromList(' + (c.ad_id != null ? c.ad_id : 'null') + ')">'
+        + '<div class="t">' + esc(t) + '</div><div class="d">' + fmtTime(c.last_message_at || c.created_at) + '</div></div>';
+    }).join('');
+  };
+  window._acCloseMyChats = function () { document.getElementById('acMyChats').classList.remove('show'); };
+  window._acOpenFromList = function (adId) { window._acCloseMyChats(); openChat(adId); };
+
+  /* ---------- نافذة الترحيب (تظهر مرة عند الفتح) ---------- */
+  function maybeWelcome() {
+    // أُزيلت نافذة الترحيب التلقائية — الدخول متاح عبر أيقونة الحساب في الهيدر
+  }
 
   /* ---------- 5) الدردشة ---------- */
   async function getOrCreateConversation(adId) {
@@ -152,8 +332,8 @@
     // أنشئ جديدة
     var subj = '';
     try { var l = (window.listings || []).find(function (x) { return String(x.id) === String(adId); }); subj = l ? (l.title || '') : ''; } catch (e) {}
-    var uname = (_user.user_metadata && _user.user_metadata.full_name) || '';
-    var ins = await sb.from('conversations').insert({ user_id: _user.id, ad_id: adId != null ? adId : null, subject: subj, user_email: _user.email || '', user_name: uname }).select().single();
+    var md = _user.user_metadata || {};
+    var ins = await sb.from('conversations').insert({ user_id: _user.id, ad_id: adId != null ? adId : null, subject: subj, user_email: _user.email || '', user_name: md.full_name || '', user_phone: md.phone || '', user_address: md.address || '' }).select().single();
     if (ins.error) throw ins.error;
     return ins.data;
   }
@@ -221,6 +401,14 @@
   };
 
   /* ---------- 6) تتبّع حالة الجلسة ---------- */
-  sb.auth.getUser().then(function (s) { _user = s.data ? s.data.user : null; });
-  sb.auth.onAuthStateChange(function (_e, session) { _user = session ? session.user : null; });
+  sb.auth.getUser().then(async function (s) {
+    _user = s.data ? s.data.user : null;
+    if (_user) await checkBlocked();
+    renderAccountBlock();
+    maybeWelcome();
+  });
+  sb.auth.onAuthStateChange(function (_e, session) {
+    _user = session ? session.user : null;
+    renderAccountBlock();
+  });
 })();
