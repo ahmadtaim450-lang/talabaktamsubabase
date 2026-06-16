@@ -1,8 +1,8 @@
-const CACHE_NAME = 'talbaktem-v11';
+const CACHE_NAME = 'talbaktem-v12';
 const STATIC_ASSETS = [
   './',
   '/index.html',
-  '/firebase-config.js',
+  '/supabase-config.js',
   '/manifest.json',
   '/offline.html',
   '/logo.png',
@@ -18,14 +18,16 @@ const STATIC_ASSETS = [
   'https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800;900&family=Poppins:wght@200;300;400;700;800;900&family=Raleway:wght@200;300;400&display=swap'
 ];
 
-// Install
+// Install — addAll مرن: فشل ملف واحد لا يُفشل التثبيت
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then(cache => Promise.allSettled(STATIC_ASSETS.map(a => cache.add(a))))
+      .then(() => self.skipWaiting())
   );
 });
 
-// Activate - clean old caches
+// Activate — حذف الكاشات القديمة
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys => Promise.all(
@@ -34,40 +36,37 @@ self.addEventListener('activate', e => {
   );
 });
 
-// Fetch - cache first for static, network first for API
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  
-  // Network first for Firebase/API calls
-  if (url.hostname.includes('firestore') || url.hostname.includes('googleapis') || url.hostname.includes('cloudinary') || url.hostname.includes('workers.dev')) {
+
+  // (1) الشبكة أولاً للـ API (Supabase / Cloudinary / Worker)
+  if (url.hostname.includes('supabase') || url.hostname.includes('firestore') ||
+      url.hostname.includes('googleapis') || url.hostname.includes('cloudinary') ||
+      url.hostname.includes('workers.dev')) {
+    e.respondWith(fetch(e.request).catch(() => caches.match(e.request)));
+    return;
+  }
+
+  // (2) الشبكة أولاً للصفحات والـ JS/CSS — تضمن وصول أي تحديث فوراً (يمنع نسخة قديمة عالقة)
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
     e.respondWith(
-      fetch(e.request).catch(() => caches.match(e.request))
+      fetch(e.request).then(res => {
+        if (res && res.ok) { const c = res.clone(); caches.open(CACHE_NAME).then(cache => cache.put(e.request, c)); }
+        return res;
+      }).catch(() => caches.match(e.request).then(hit => hit || (e.request.mode === 'navigate' ? caches.match('/offline.html') : undefined)))
     );
     return;
   }
-  
-  // Cache first for static assets
+
+  // (3) الكاش أولاً للوسائط الثابتة (صور/خطوط) مع تحديث بالخلفية
   e.respondWith(
     caches.match(e.request).then(cached => {
-      if (cached) {
-        // Update cache in background
-        fetch(e.request).then(res => {
-          if (res.ok) caches.open(CACHE_NAME).then(cache => cache.put(e.request, res));
-        }).catch(() => {});
-        return cached;
-      }
-      return fetch(e.request).then(res => {
-        if (res.ok && e.request.method === 'GET') {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
+      const net = fetch(e.request).then(res => {
+        if (res && res.ok) { const c = res.clone(); caches.open(CACHE_NAME).then(cache => cache.put(e.request, c)); }
         return res;
-      }).catch(() => {
-        if (e.request.mode === 'navigate') {
-          // Fallback to index.html for SPA routing or offline.html if completely offline
-          return caches.match('/index.html') || caches.match('/offline.html');
-        }
-      });
+      }).catch(() => cached);
+      return cached || net;
     })
   );
 });

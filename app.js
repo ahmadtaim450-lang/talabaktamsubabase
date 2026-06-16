@@ -887,7 +887,7 @@ function renderPagination(current,totalPages,total,start,end){
 /* ===== DETAIL ===== */
 function viewDetail(id){
   clearTimers();
-  const l=listings.find(x=>x.id===id);if(!l)return;
+  const l=listings.find(x=>String(x.id)===String(id));if(!l)return;
   window._currentListing=l;
 
   // Browser history for detail page
@@ -989,7 +989,7 @@ function viewDetail(id){
 	                    <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
 	                  </div>
 	                  <div class="bf-form-footer">
-	                    <button class="book-wa-btn" onclick="submitBooking('${l.id}')">${ICON.wa} للتأكيد والاستفسار التواصل عبر واتساب</button>
+	                    <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
 	                  </div>
 	                </div>
 	              </div>
@@ -1022,7 +1022,7 @@ function viewDetail(id){
 	                <div class="bf-group"><label class="bf-label">رقم الهاتف</label><input type="tel" id="mbfPhone" class="bf-input" placeholder="09xxxxxxxx" inputmode="numeric" pattern="[0-9]*" oninput="this.value=this.value.replace(/[^0-9]/g,'')"></div>
 	              </div>
 	              <div class="bf-form-footer">
-	                <button class="book-wa-btn" onclick="submitMonthlyBooking('${l.id}')">${ICON.wa} للتأكيد والاستفسار التواصل عبر واتساب</button>
+	                <button class="book-wa-btn" onclick="submitMonthlyBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
 	              </div>
 	            </div>
 	          </div>
@@ -1105,7 +1105,7 @@ function viewDetail(id){
                   <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
                 </div>
                 <div class="bf-form-footer">
-                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">${ICON.wa} للتأكيد والاستفسار التواصل عبر واتساب</button>
+                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
                 </div>
               </div>
             </div>
@@ -1190,7 +1190,7 @@ function viewDetail(id){
 	                  <div class="bf-group"><label class="bf-label">العنوان <span class="opt-tag">(اختياري)</span></label><input type="text" id="bfAddress" class="bf-input" placeholder="المدينة، الحي"></div>
 	                </div>
 	                <div class="bf-form-footer">
-	                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">${ICON.wa} للتأكيد والاستفسار التواصل عبر واتساب</button>
+	                  <button class="book-wa-btn" onclick="submitBooking('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
 	                </div>
 	              </div>
 	            </div>
@@ -1241,7 +1241,7 @@ function viewDetail(id){
         <div class="det-desc-container af s2">
 	          <div class="det-desc"><h3 class="det-desc-title">الوصف</h3>${esc(l.desc)}</div>
 	          <div class="det-actions">
-	            <button class="det-wa-btn" onclick="openWA('${l.id}')">${ICON.wa} تواصل عبر واتساب</button>
+	            <button class="det-wa-btn" onclick="openChat('${l.id}')">💬 تواصل عبر الدردشة</button>
 	            <a class="det-wa-btn" href="tel:+${(l.phone||'963983127483').replace(/[^0-9]/g,'')}" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px;background:#F6921E;color:#fff;border:none;border-radius:14px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;width:100%;margin-top:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.11 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg> اتصال مباشر</a>
 	          </div>
         </div>
@@ -1272,7 +1272,7 @@ function viewDetail(id){
 	        <div class="det-desc-container af s3">
 	          <div class="det-desc"><h3 class="det-desc-title">الوصف</h3>${esc(l.desc)}</div>
 	          <div class="det-actions">
-	            <button class="det-wa-btn" onclick="openWA('${l.id}')">${ICON.wa} للتأكيد والاستفسار التواصل عبر واتساب</button>
+	            <button class="det-wa-btn" onclick="openChat('${l.id}')">💬 للتأكيد والاستفسار تواصل عبر الدردشة</button>
 	          </div>
 	        </div>
 	      </div>`;
@@ -1366,7 +1366,7 @@ function selectMonth(val,dailyPrice){
 }
 
 function submitMonthlyBooking(id){
-  const l=listings.find(x=>x.id===id)||window._currentListing;if(!l)return;
+  const l=listings.find(x=>String(x.id)===String(id))||window._currentListing;if(!l)return;
   const name=document.getElementById('mbfName').value.trim();
   const last=document.getElementById('mbfLast').value.trim();
   const phone=document.getElementById('mbfPhone').value.trim();
@@ -1389,10 +1389,7 @@ function submitMonthlyBooking(id){
   msg+='▫️ الاسم: '+name+' '+last+'\n';
   msg+='▫️ الهاتف: '+phone+'\n';
   msg+='\n✅ بانتظار التأكيد\nشكراً لكم 🙏';
-  const targetPhone = '963983127483';
-  const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
-  const win = window.open(waUrl, '_blank');
-  if(!win) window.location.href = waUrl;
+  if (window.openChat) { openChat(l.id, msg); }
 }
 
 function closeRentDetail(){
@@ -1423,7 +1420,7 @@ function handleBookClick(){
 }
 
 function submitBooking(id){
-  const l=listings.find(x=>x.id===id)||window._currentListing;if(!l)return;
+  const l=listings.find(x=>String(x.id)===String(id))||window._currentListing;if(!l)return;
   const name=document.getElementById('bfName').value.trim();
   const last=document.getElementById('bfLast').value.trim();
   const phone=document.getElementById('bfPhone').value.trim();
@@ -1462,13 +1459,7 @@ function submitBooking(id){
   if(email)msg+='▫️ الإيميل: '+email+'\n';
   msg+='\n✅ بانتظار التأكيد\nشكراً لكم 🙏';
   
-  const targetPhone = '963983127483';
-  const waUrl = 'https://wa.me/' + targetPhone + '?text=' + encodeURIComponent(msg);
-  const win = window.open(waUrl, '_blank');
-  if(!win) window.location.href = waUrl;
-  
-  // Show confirmation overlay
-  showBookConfirm();
+  if (window.openChat) { openChat(l.id, msg); }
 }
 
 function showBookConfirm(){
@@ -1514,7 +1505,7 @@ function buildMapSection(loc, label){
 }
 
 function openWA(id){
-  const l=listings.find(x=>x.id===id)||window._currentListing;if(!l)return;
+  const l=listings.find(x=>String(x.id)===String(id))||window._currentListing;if(!l)return;
   const cat=getCat(l.catId);const apt=isApt(l.catId);const rent=isRent(l.catId);const eq=isEquip(l.catId);
   const freead=isFreeAd(l.catId);
   let msg='السلام عليكم 👋\n';
