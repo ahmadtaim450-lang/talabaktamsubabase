@@ -9,9 +9,16 @@
   if (typeof supabaseClient === 'undefined') { console.error('[auth-chat] supabaseClient غير محمّل'); return; }
 
   var sb = supabaseClient;
+  // التقاط مبكّر لرمز الاستعادة من الرابط (قبل أن يمسحه Supabase) لفتح نافذة كلمة المرور
+  var _recoveryInUrl = /(?:^|[#&?])type=recovery(?:&|$)/.test((window.location.hash || '') + '&' + (window.location.search || ''));
   var _user = null;          // المستخدم الحالي
   var _conv = null;          // المحادثة المفتوحة
-  var _channel = null;       // اشتراك Realtime
+  var _channel = null;       // اشتراك Realtime (رسائل)
+  var _rt = null;            // قناة البثّ (كتابة/جلسة)
+  var _typingHide = null;    // مؤقّت إخفاء "جاري الكتابة"
+  var _lastTyped = 0;        // تحديد معدّل بثّ الكتابة
+  var _autoReplied = false;  // هل أُرسل الردّ التلقائي بهذه الجلسة
+  var SUPPORT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><path d="M20 17.5a2 2 0 0 1-2 2h-3.5"/><rect x="2" y="14.5" width="3.5" height="5.5" rx="1.5"/><rect x="18.5" y="14.5" width="3.5" height="5.5" rx="1.5"/></svg>';
   var _pendingAdId = null;   // إعلان ننتظر الدخول لفتح دردشته
   var _pendingMsg = null;    // رسالة محجوزة (تفاصيل حجز) تُعبّأ بعد الدخول
   var _pendingBooking = null;// طلب حجز ننتظر الدخول لإرساله
@@ -72,10 +79,8 @@
     + '.ac-chat-head{border-radius:0}'
     + '.ac-chat-body,.ac-mylist{max-width:760px;width:100%;margin:0 auto}'
     + '.ac-chat-foot{max-width:760px;width:100%;margin:0 auto;box-sizing:border-box}'
-    /* ملء الشاشة: تسجيل الدخول / إنشاء حساب */
-    + '#acAuthOverlay,#acProfOverlay{padding:0}'
-    + '#acAuthOverlay .ac-card,#acProfOverlay .ac-card{width:100%;height:100%;max-width:none;max-height:none;border-radius:0;box-shadow:none;display:flex;flex-direction:column;justify-content:center;align-items:center;overflow-y:auto;padding:24px}'
-    + '#acAuthOverlay .ac-card>*,#acProfOverlay .ac-card>*{width:100%;max-width:420px}'
+    /* الدخول وإنشاء الحساب والبروفايل: نوافذ منبثقة تنزلق داخلياً عند الطول */
+    + '#acAuthOverlay .ac-card,#acProfOverlay .ac-card{max-height:90vh;overflow-y:auto}'
     /* أيقونة البروفايل في الهيدر (لابتوب فقط) */
     + '.header-profile-btn{display:flex;background:#f1f3f7;border:none;cursor:pointer;width:46px;height:46px;border-radius:14px;align-items:center;justify-content:center;flex-shrink:0;transition:background .2s;padding:0}'
     + '.header-profile-btn svg{width:32px;height:32px;display:block}'
@@ -85,6 +90,54 @@
     + '@media(max-width:1023px){.hdr-actions{display:contents}.header .menu-btn{order:0}.header .logo{order:1;flex:1;justify-content:center}.header .header-profile-btn{order:2}.header .desktop-nav{order:3}}';
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
+  /* ---------- 1.5) ترقية شكل الدردشة (مواصفات عالمية) ---------- */
+  var css2 = ''
+    + '.ac-chat{background:#eef2f6}'
+    + '.ac-chat-head{gap:12px;padding:13px 16px;align-items:center;box-shadow:0 1px 3px rgba(15,23,42,.05)}'
+    + '.ac-h-av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,#F6921E,#fb923c);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.92rem;flex-shrink:0;box-shadow:0 3px 10px rgba(246,146,30,.35)}'
+    + '.ac-h-av svg{width:24px;height:24px}'
+    /* أيقونة الدعم بجانب رسائل الإدارة */
+    + '.ac-trow{display:flex;align-items:flex-end;gap:7px;align-self:flex-end;max-width:86%}'
+    + '.ac-trow .ac-bubble.them{align-self:auto;max-width:100%}'
+    + '.ac-mini-av{width:30px;height:30px;border-radius:50%;background:linear-gradient(135deg,#F6921E,#fb923c);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 6px rgba(246,146,30,.3)}'
+    + '.ac-mini-av svg{width:17px;height:17px}'
+    /* تسجيل عبر مزوّد خارجي */
+    + '.ac-or{display:flex;align-items:center;gap:10px;color:#94a3b8;font-size:.8rem;font-weight:700;margin:15px 0}'
+    + '.ac-or::before,.ac-or::after{content:"";flex:1;height:1px;background:#e2e8f0}'
+    + '.ac-social{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border:1.5px solid #e2e8f0;border-radius:12px;background:#fff;font-size:.9rem;font-weight:700;color:#334155;cursor:pointer;font-family:inherit;margin-bottom:10px;transition:background .15s}'
+    + '.ac-social:hover{background:#f8fafc}'
+    + '.ac-social svg{width:20px;height:20px;flex-shrink:0}'
+    + '.ac-h-info{flex:1;min-width:0}'
+    + '.ac-h-info .t{font-weight:800;color:#0f172a;font-size:.98rem}'
+    + '.ac-h-info .s{font-size:.72rem;color:#16a34a;font-weight:700;display:flex;align-items:center;gap:5px;margin-top:2px}'
+    + '.ac-dot{width:8px;height:8px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px rgba(34,197,94,.18);flex-shrink:0}'
+    + '.ac-chat-body{background:#eef2f6;gap:10px;padding:18px 16px}'
+    + '.ac-bubble{box-shadow:0 1px 2px rgba(15,23,42,.07);animation:acPop .18s ease}'
+    + '@keyframes acPop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}'
+    + '.ac-bubble.them{border-radius:16px 16px 16px 4px}'
+    + '.ac-bubble.me{border-radius:16px 16px 4px 16px}'
+    + '.ac-sender{font-size:.68rem;font-weight:800;color:#F6921E;margin-bottom:3px}'
+    + '.ac-sys{align-self:center;background:rgba(15,23,42,.07);color:#475569;font-size:.72rem;font-weight:700;padding:5px 13px;border-radius:20px;margin:3px 0;animation:acPop .18s ease}'
+    + '.ac-typing{align-self:flex-end;background:#fff;border:1px solid #eef2f7;border-radius:16px 16px 16px 4px;padding:12px 15px;display:none}'
+    + '.ac-typing.show{display:flex;gap:4px;align-items:center}'
+    + '.ac-typing span{width:7px;height:7px;border-radius:50%;background:#cbd5e1;animation:acTy 1.2s infinite}'
+    + '.ac-typing span:nth-child(2){animation-delay:.2s}.ac-typing span:nth-child(3){animation-delay:.4s}'
+    + '@keyframes acTy{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-5px);opacity:1}}'
+    + '.ac-chat-foot{padding:12px 14px;gap:10px}'
+    + '.ac-chat-foot input{background:#f1f5f9;border-color:transparent}'
+    + '.ac-chat-foot input:focus{background:#fff;border-color:#F6921E}'
+    /* بطاقة "حسابي" */
+    + '.acp-head{display:flex;align-items:center;gap:13px;margin-bottom:16px}'
+    + '.acp-av{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,#F6921E,#fb923c);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:1.3rem;flex-shrink:0;box-shadow:0 4px 12px rgba(246,146,30,.35)}'
+    + '.acp-name{font-weight:800;color:#0f172a;font-size:1.05rem}'
+    + '.acp-email{font-size:.78rem;color:#94a3b8;direction:ltr;text-align:right;overflow-wrap:anywhere}'
+    + '.acp-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 2px;border-bottom:1px solid #f1f5f9}'
+    + '.acp-k{font-size:.82rem;color:#94a3b8;font-weight:700;flex-shrink:0}'
+    + '.acp-v{font-size:.92rem;color:#0f172a;font-weight:700;text-align:left;overflow-wrap:anywhere}'
+    + '.acp-edit{width:100%;margin-top:18px;padding:13px;border:1.5px solid #F6921E;background:#fff7ed;color:#F6921E;border-radius:13px;font-size:.92rem;font-weight:800;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}'
+    + '.acp-edit:hover{background:#ffedd5}';
+  var st2 = document.createElement('style'); st2.textContent = css2; document.head.appendChild(st2);
+
   /* ---------- 2) حقن DOM ---------- */
   var authHtml = ''
     + '<div class="ac-card" style="position:relative">'
@@ -92,12 +145,14 @@
     + '  <h3 id="acTitle">تسجيل الدخول</h3>'
     + '  <p class="sub" id="acSub">سجّل دخولك لتتواصل مع الإدارة عبر الدردشة</p>'
     + '  <div class="ac-msg" id="acMsg"></div>'
-    + '  <div class="ac-field" id="acNameField" style="display:none"><label>الاسم</label><input id="acName" type="text" placeholder="اسمك الكامل"></div>'
+    + '  <div class="ac-field" id="acNameField" style="display:none"><label>الاسم</label><input id="acName" type="text" placeholder="اسمك الأول"></div>'
+    + '  <div class="ac-field" id="acLastField" style="display:none"><label>الكنية</label><input id="acLast" type="text" placeholder="كنيتك"></div>'
     + '  <div class="ac-field" id="acPhoneField" style="display:none"><label>رقم الهاتف</label><input id="acPhone" type="tel" inputmode="numeric" placeholder="09xxxxxxxx" dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
     + '  <div class="ac-field" id="acAddressField" style="display:none"><label>العنوان <span style="color:#94a3b8;font-weight:600">(اختياري)</span></label><input id="acAddress" type="text" placeholder="المدينة، الحي"></div>'
     + '  <div class="ac-field"><label>البريد الإلكتروني</label><input id="acEmail" type="email" placeholder="you@email.com" dir="ltr"></div>'
     + '  <div class="ac-field"><label>كلمة المرور</label><input id="acPass" type="password" placeholder="••••••••" dir="ltr"></div>'
     + '  <button class="ac-btn" id="acSubmit" onclick="window._acSubmit()">دخول</button>'
+    + '  <div class="ac-switch" id="acForgotRow" style="margin-top:14px"><a onclick="window._acForgot()">نسيت كلمة المرور؟</a></div>'
     + '  <div class="ac-switch" id="acSwitch">ليس لديك حساب؟ <a onclick="window._acToggle()">أنشئ حساباً</a></div>'
     + '  <div class="ac-guest-hint">أو <a onclick="window._acCloseAuth()">تابع التصفّح كزائر</a></div>'
     + '</div>';
@@ -108,28 +163,56 @@
   var chatEl = document.createElement('div');
   chatEl.className = 'ac-chat'; chatEl.id = 'acChat';
   chatEl.innerHTML = ''
-    + '<div class="ac-chat-head"><div><div class="t" id="acChatTitle">الدردشة</div><div class="s">الإدارة عادةً تردّ بسرعة</div></div>'
-    + '<button onclick="window._acCloseChat()">&times;</button></div>'
+    + '<div class="ac-chat-head">'
+    + '  <div class="ac-h-av">' + SUPPORT_SVG + '</div>'
+    + '  <div class="ac-h-info"><div class="t" id="acChatTitle">الدعم — طلبك تم</div><div class="s"><span class="ac-dot"></span> متصل الآن</div></div>'
+    + '  <button onclick="window._acCloseChat()">&times;</button></div>'
     + '<div class="ac-chat-body" id="acChatBody"></div>'
-    + '<div class="ac-chat-foot"><input id="acChatInput" placeholder="اكتب رسالتك..." onkeydown="if(event.key===\'Enter\')window._acSend()"><button onclick="window._acSend()">&#10148;</button></div>';
+    + '<div class="ac-chat-foot"><input id="acChatInput" placeholder="اكتب رسالتك..." oninput="window._acTyping&&window._acTyping()" onkeydown="if(event.key===\'Enter\')window._acSend()"><button onclick="window._acSend()">&#10148;</button></div>';
   document.body.appendChild(chatEl);
 
-  // نافذة "حسابي" — تعديل الاسم/الهاتف/العنوان
+  // نافذة "حسابي" — بطاقة احترافية: جدول مقفل + زر تعديل (قلم)
+  var pencilSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:17px;height:17px"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
   var profHtml = ''
-    + '<div class="ac-card" style="position:relative">'
+    + '<div class="ac-card ac-prof" style="position:relative">'
     + '  <button class="ac-close" onclick="window._acCloseProfile()">&times;</button>'
-    + '  <h3>حسابي</h3>'
-    + '  <p class="sub" id="acProfEmail"></p>'
+    + '  <div class="acp-head"><div class="acp-av" id="acpAv">؟</div><div class="acp-h-txt"><div class="acp-name" id="acpFullName">حسابي</div><div class="acp-email" id="acProfEmail"></div></div></div>'
     + '  <div class="ac-msg" id="acProfMsg"></div>'
-    + '  <div class="ac-field"><label>الاسم</label><input id="acProfName" type="text"></div>'
-    + '  <div class="ac-field"><label>رقم الهاتف</label><input id="acProfPhone" type="tel" inputmode="numeric" dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
-    + '  <div class="ac-field"><label>العنوان <span style="color:#94a3b8;font-weight:600">(اختياري)</span></label><input id="acProfAddress" type="text"></div>'
-    + '  <button class="ac-btn" id="acProfSave" onclick="window._acSaveProfile()">حفظ التعديلات</button>'
-    + '  <div class="ac-switch"><a onclick="window._acLogout()" style="color:#ef4444">تسجيل الخروج</a></div>'
+    /* وضع العرض: جدول مقفل */
+    + '  <div id="acpView">'
+    + '    <div class="acp-row"><span class="acp-k">الاسم</span><span class="acp-v" id="acpVName">—</span></div>'
+    + '    <div class="acp-row"><span class="acp-k">الكنية</span><span class="acp-v" id="acpVLast">—</span></div>'
+    + '    <div class="acp-row"><span class="acp-k">رقم الهاتف</span><span class="acp-v" id="acpVPhone" dir="ltr">—</span></div>'
+    + '    <div class="acp-row"><span class="acp-k">البريد</span><span class="acp-v" id="acpVEmail" dir="ltr">—</span></div>'
+    + '    <div class="acp-row"><span class="acp-k">العنوان</span><span class="acp-v" id="acpVAddr">—</span></div>'
+    + '    <button class="acp-edit" onclick="window._acEditProfile()">' + pencilSvg + ' تعديل المعلومات</button>'
+    + '  </div>'
+    /* وضع التعديل: حقول */
+    + '  <div id="acpEdit" style="display:none">'
+    + '    <div class="ac-field"><label>الاسم</label><input id="acProfName" type="text" placeholder="اسمك الأول"></div>'
+    + '    <div class="ac-field"><label>الكنية</label><input id="acProfLast" type="text" placeholder="كنيتك"></div>'
+    + '    <div class="ac-field"><label>رقم الهاتف</label><input id="acProfPhone" type="tel" inputmode="numeric" dir="ltr" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
+    + '    <div class="ac-field"><label>العنوان <span style="color:#94a3b8;font-weight:600">(اختياري)</span></label><input id="acProfAddress" type="text" placeholder="المدينة، الحي"></div>'
+    + '    <div style="display:flex;gap:10px"><button class="ac-btn" style="background:#f1f5f9;color:#475569" onclick="window._acCancelEdit()">إلغاء</button><button class="ac-btn" id="acProfSave" onclick="window._acSaveProfile()">حفظ</button></div>'
+    + '  </div>'
+    + '  <div class="ac-switch" style="margin-top:16px"><a onclick="window._acChangePassword()">تغيير كلمة المرور</a> &nbsp;·&nbsp; <a onclick="window._acLogout()" style="color:#ef4444">تسجيل الخروج</a></div>'
     + '</div>';
   var profOverlay = document.createElement('div');
   profOverlay.className = 'ac-overlay'; profOverlay.id = 'acProfOverlay'; profOverlay.innerHTML = profHtml;
   document.body.appendChild(profOverlay);
+
+  // نافذة "كلمة مرور جديدة" — تظهر تلقائياً عند فتح رابط إعادة التعيين من الإيميل
+  var resetHtml = ''
+    + '<div class="ac-card" style="position:relative">'
+    + '  <h3>كلمة مرور جديدة</h3>'
+    + '  <p class="sub">أدخل كلمة مرور جديدة لحسابك</p>'
+    + '  <div class="ac-msg" id="acResetMsg"></div>'
+    + '  <div class="ac-field"><label>كلمة المرور الجديدة</label><input id="acResetPass" type="password" placeholder="••••••••" dir="ltr"></div>'
+    + '  <button class="ac-btn" id="acResetBtn" onclick="window._acDoReset()">حفظ كلمة المرور</button>'
+    + '</div>';
+  var resetOverlay = document.createElement('div');
+  resetOverlay.className = 'ac-overlay'; resetOverlay.id = 'acResetOverlay'; resetOverlay.innerHTML = resetHtml;
+  document.body.appendChild(resetOverlay);
 
   // قائمة "محادثاتي"
   var myChats = document.createElement('div');
@@ -145,6 +228,7 @@
   function showAuthMsg(t, ok) { var m = document.getElementById('acMsg'); m.textContent = t; m.className = 'ac-msg ' + (ok ? 'ok' : 'err'); }
   function clearAuthMsg() { var m = document.getElementById('acMsg'); m.className = 'ac-msg'; m.textContent = ''; }
   function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; }
+  function cleanEmail(v) { return (v || '').replace(/[​-\u200F\u202A-\u202E\u2066-\u2069﻿]/g, '').trim().toLowerCase(); }
   function fmtTime(ts) { try { return new Date(ts).toLocaleString('ar', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'numeric' }); } catch (e) { return ''; } }
 
   /* ---------- 4) المصادقة ---------- */
@@ -158,8 +242,10 @@
     document.getElementById('acTitle').textContent = _signupMode ? 'إنشاء حساب' : 'تسجيل الدخول';
     document.getElementById('acSubmit').textContent = _signupMode ? 'إنشاء الحساب' : 'دخول';
     document.getElementById('acNameField').style.display = _signupMode ? 'block' : 'none';
+    document.getElementById('acLastField').style.display = _signupMode ? 'block' : 'none';
     document.getElementById('acPhoneField').style.display = _signupMode ? 'block' : 'none';
     document.getElementById('acAddressField').style.display = _signupMode ? 'block' : 'none';
+    document.getElementById('acForgotRow').style.display = _signupMode ? 'none' : 'block';
     document.getElementById('acSwitch').innerHTML = _signupMode
       ? 'لديك حساب؟ <a onclick="window._acToggle()">سجّل الدخول</a>'
       : 'ليس لديك حساب؟ <a onclick="window._acToggle()">أنشئ حساباً</a>';
@@ -173,14 +259,15 @@
       .trim().toLowerCase();
     var pass = document.getElementById('acPass').value;
     var name = document.getElementById('acName').value.trim();
+    var last = document.getElementById('acLast').value.trim();
     var phone = document.getElementById('acPhone').value.trim();
     var address = document.getElementById('acAddress').value.trim();
     if (!email || !pass) { showAuthMsg('أدخل البريد وكلمة المرور'); return; }
-    if (_signupMode && (!name || !phone)) { showAuthMsg('أدخل الاسم ورقم الهاتف'); return; }
+    if (_signupMode && (!name || !last || !phone)) { showAuthMsg('أدخل الاسم والكنية ورقم الهاتف'); return; }
     var btn = document.getElementById('acSubmit'); btn.disabled = true; var lbl = btn.textContent; btn.textContent = 'جارٍ...';
     try {
       if (_signupMode) {
-        var r = await sb.auth.signUp({ email: email, password: pass, options: { data: { full_name: name, phone: phone, address: address } } });
+        var r = await sb.auth.signUp({ email: email, password: pass, options: { data: { first_name: name, last_name: last, full_name: (name + ' ' + last).trim(), phone: phone, address: address } } });
         if (r.error) throw r.error;
         if (!r.data.session) { showAuthMsg('تم الإنشاء! تحقّق من بريدك لتفعيل الحساب ثم سجّل الدخول.', true); _signupMode = false; }
         else { onLoggedIn(r.data.user); }
@@ -202,6 +289,41 @@
     } finally { btn.disabled = false; btn.textContent = lbl; }
   };
 
+  // إرسال رابط إعادة تعيين كلمة المرور إلى البريد
+  window._acForgot = async function () {
+    var email = cleanEmail(document.getElementById('acEmail').value);
+    if (!email) { showAuthMsg('أدخل بريدك الإلكتروني في الحقل أعلاه ثم اضغط "نسيت كلمة المرور؟"'); return; }
+    var btn = document.getElementById('acSubmit'); btn.disabled = true;
+    try {
+      var r = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+      if (r.error) throw r.error;
+      showAuthMsg('أرسلنا رابط إعادة التعيين إلى بريدك ✓\nافتح الرابط لتعيين كلمة مرور جديدة.', true);
+    } catch (e) {
+      var c = (e && (e.message || e.msg)) || '';
+      if (/rate|seconds|too many/i.test(c)) showAuthMsg('أرسلنا رابطاً منذ قليل — انتظر دقيقة ثم أعد المحاولة.');
+      else showAuthMsg('تعذّر الإرسال: ' + (c || 'حاول لاحقاً'));
+    } finally { btn.disabled = false; }
+  };
+
+  // حفظ كلمة المرور الجديدة (بعد فتح رابط الإيميل — الجلسة مفتوحة مؤقتاً)
+  window._acDoReset = async function () {
+    var pass = document.getElementById('acResetPass').value;
+    var m = document.getElementById('acResetMsg');
+    if (!pass || pass.length < 6) { m.textContent = 'كلمة المرور يجب ألا تقل عن 6 أحرف'; m.className = 'ac-msg err'; return; }
+    var btn = document.getElementById('acResetBtn'); btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
+    try {
+      var r = await sb.auth.updateUser({ password: pass });
+      if (r.error) throw r.error;
+      m.textContent = 'تم تغيير كلمة المرور ✓'; m.className = 'ac-msg ok';
+      _user = r.data.user;
+      // نظّف رمز الاستعادة من الرابط ثم أغلق النافذة
+      try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+      setTimeout(function () { document.getElementById('acResetOverlay').classList.remove('show'); renderAccountBlock(); }, 1200);
+    } catch (e) {
+      m.textContent = 'تعذّر: ' + ((e && e.message) || 'حاول لاحقاً'); m.className = 'ac-msg err';
+    } finally { btn.disabled = false; btn.textContent = 'حفظ كلمة المرور'; }
+  };
+
   // فحص الحظر: إن كان الحساب محظوراً سجّل خروجه فوراً
   async function checkBlocked() {
     if (!_user) return false;
@@ -209,7 +331,7 @@
       var r = await sb.from('profiles').select('blocked').eq('user_id', _user.id).maybeSingle();
       if (r.data && r.data.blocked) {
         await sb.auth.signOut(); _user = null; renderAccountBlock();
-        alert('تم حظر حسابك. للاستفسار تواصل مع الإدارة.');
+        window.uiAlert('تم حظر حسابك. للاستفسار يرجى التواصل مع الإدارة.', { type: 'error', title: 'الحساب محظور' });
         return true;
       }
     } catch (e) {}
@@ -235,7 +357,9 @@
       ad_id: data.adId != null ? data.adId : null, user_id: _user.id,
       ad_ref: data.adRef || '', ad_title: data.adTitle || '', ad_cat_id: data.adCatId || '', ad_image: data.adImage || '',
       client_name: data.clientName || md.full_name || '',
+      client_last: data.clientLast || '',
       client_phone: data.clientPhone || md.phone || '',
+      client_email: data.clientEmail || _user.email || '',
       client_address: data.clientAddress || md.address || '',
       deal_type: data.dealType || 'rent',
       date_from: data.dateFrom || null, date_to: data.dateTo || null,
@@ -244,10 +368,11 @@
       status: 'pending'
     };
     var r = await sb.from('bookings').insert(row);
-    if (r.error) { alert('تعذّر إرسال الطلب: ' + r.error.message); return; }
-    alert(data.dealType === 'sale'
-      ? 'تم إرسال طلب الشراء للإدارة ✓\nسنتواصل معك قريباً.'
-      : 'تم إرسال طلب الحجز للإدارة ✓\nسنؤكّده قريباً.');
+    if (r.error) { window.uiToast('تعذّر إرسال الطلب: ' + r.error.message, 'error'); return; }
+    window.uiAlert(data.dealType === 'sale'
+      ? 'تم إرسال طلب الشراء للإدارة بنجاح.\nسنتواصل معك قريباً.'
+      : 'تم إرسال طلب الحجز للإدارة بنجاح.\nسنؤكّده لك قريباً.',
+      { type: 'success', title: 'تم الإرسال' });
   };
 
   window._acLogout = async function () {
@@ -260,7 +385,9 @@
   window.currentUserInfo = function () {
     if (!_user) return null;
     var md = _user.user_metadata || {};
-    return { name: md.full_name || '', phone: md.phone || '', address: md.address || '', email: _user.email || '' };
+    var first = md.first_name || (md.full_name || '').trim().split(/\s+/)[0] || '';
+    var last = md.last_name || (md.full_name || '').trim().split(/\s+/).slice(1).join(' ') || '';
+    return { name: md.full_name || (first + ' ' + last).trim(), first: first, last: last, phone: md.phone || '', address: md.address || '', email: _user.email || '' };
   };
   window.isLoggedIn = function () { return !!_user; };
   // زرّ الحساب في الهيدر: يفتح "حسابي" إن كان داخلاً، وإلا نافذة الدخول
@@ -273,30 +400,72 @@
     var blk = document.getElementById('acAccountBlock'); if (blk) blk.remove();
   }
 
-  /* ---------- نافذة "حسابي" ---------- */
+  /* ---------- نافذة "حسابي" (جدول مقفل + تعديل بالقلم) ---------- */
   window._acOpenProfile = function () {
     if (!_user) { window._acOpenAuth(); return; }
-    var md = _user.user_metadata || {};
-    document.getElementById('acProfEmail').textContent = _user.email || '';
-    document.getElementById('acProfName').value = md.full_name || '';
-    document.getElementById('acProfPhone').value = md.phone || '';
-    document.getElementById('acProfAddress').value = md.address || '';
+    var i = window.currentUserInfo() || {};
+    var fullName = (i.first + ' ' + i.last).trim() || 'حسابي';
+    document.getElementById('acpFullName').textContent = fullName;
+    document.getElementById('acProfEmail').textContent = i.email || '';
+    document.getElementById('acpAv').textContent = (i.first || i.email || '؟').charAt(0).toUpperCase();
+    document.getElementById('acpVName').textContent = i.first || '—';
+    document.getElementById('acpVLast').textContent = i.last || '—';
+    document.getElementById('acpVPhone').textContent = i.phone || '—';
+    document.getElementById('acpVEmail').textContent = i.email || '—';
+    document.getElementById('acpVAddr').textContent = i.address || '—';
+    // حقول التعديل
+    document.getElementById('acProfName').value = i.first || '';
+    document.getElementById('acProfLast').value = i.last || '';
+    document.getElementById('acProfPhone').value = i.phone || '';
+    document.getElementById('acProfAddress').value = i.address || '';
     document.getElementById('acProfMsg').className = 'ac-msg';
+    document.getElementById('acpView').style.display = '';
+    document.getElementById('acpEdit').style.display = 'none';
     document.getElementById('acProfOverlay').classList.add('show');
   };
+  window._acEditProfile = function () { document.getElementById('acpView').style.display = 'none'; document.getElementById('acpEdit').style.display = ''; };
+  window._acCancelEdit = function () { document.getElementById('acpEdit').style.display = 'none'; document.getElementById('acpView').style.display = ''; document.getElementById('acProfMsg').className = 'ac-msg'; };
   window._acCloseProfile = function () { var o = document.getElementById('acProfOverlay'); if (o) o.classList.remove('show'); };
   window._acSaveProfile = async function () {
-    var name = document.getElementById('acProfName').value.trim();
+    var first = document.getElementById('acProfName').value.trim();
+    var last = document.getElementById('acProfLast').value.trim();
     var phone = document.getElementById('acProfPhone').value.trim();
     var address = document.getElementById('acProfAddress').value.trim();
     var m = document.getElementById('acProfMsg');
-    if (!name || !phone) { m.textContent = 'أدخل الاسم ورقم الهاتف'; m.className = 'ac-msg err'; return; }
-    var btn = document.getElementById('acProfSave'); btn.disabled = true; btn.textContent = 'جارٍ الحفظ...';
-    var r = await sb.auth.updateUser({ data: { full_name: name, phone: phone, address: address } });
-    btn.disabled = false; btn.textContent = 'حفظ التعديلات';
+    if (!first || !last || !phone) { m.textContent = 'أدخل الاسم والكنية ورقم الهاتف'; m.className = 'ac-msg err'; return; }
+    var btn = document.getElementById('acProfSave'); btn.disabled = true; btn.textContent = 'جارٍ...';
+    var r = await sb.auth.updateUser({ data: { first_name: first, last_name: last, full_name: (first + ' ' + last).trim(), phone: phone, address: address } });
+    btn.disabled = false; btn.textContent = 'حفظ';
     if (r.error) { m.textContent = 'تعذّر: ' + r.error.message; m.className = 'ac-msg err'; return; }
     _user = r.data.user; renderAccountBlock();
-    m.textContent = 'تم الحفظ ✓'; m.className = 'ac-msg ok';
+    window._acOpenProfile(); // أعد بناء الجدول المقفل بالقيم الجديدة
+    var m2 = document.getElementById('acProfMsg'); m2.textContent = 'تم الحفظ بنجاح'; m2.className = 'ac-msg ok';
+  };
+  // تغيير كلمة المرور عبر رابط تحقّق يُرسَل إلى بريد المستخدم (وليس مباشرة)
+  window._acChangePassword = async function () {
+    if (!_user || !_user.email) { window.uiToast('تعذّر — لا يوجد بريد مرتبط بالحساب', 'error'); return; }
+    var ok = await window.uiConfirm('سنرسل رابط تغيير كلمة المرور إلى بريدك:\n' + _user.email, { title: 'تغيير كلمة المرور', okText: 'إرسال الرابط' });
+    if (!ok) return;
+    try {
+      var r = await sb.auth.resetPasswordForEmail(_user.email, { redirectTo: window.location.origin + window.location.pathname });
+      if (r.error) throw r.error;
+      window.uiAlert('أرسلنا رابط تغيير كلمة المرور إلى بريدك.\nافتح الرابط لتعيين كلمة مرور جديدة.', { type: 'success', title: 'تحقّق من بريدك' });
+    } catch (e) {
+      var c = (e && e.message) || '';
+      if (/rate|seconds|too many/i.test(c)) window.uiToast('أرسلنا رابطاً منذ قليل — انتظر دقيقة ثم أعد المحاولة.', 'error');
+      else window.uiToast('تعذّر الإرسال: ' + (c || 'حاول لاحقاً'), 'error');
+    }
+  };
+  // تسجيل الدخول عبر مزوّد خارجي (Google / Facebook)
+  window._acOAuth = async function (provider) {
+    try {
+      var r = await sb.auth.signInWithOAuth({ provider: provider, options: { redirectTo: window.location.origin + window.location.pathname } });
+      if (r.error) throw r.error;
+    } catch (e) {
+      var c = (e && e.message) || '';
+      if (/provider is not enabled|Unsupported provider/i.test(c)) window.uiToast('هذا الخيار غير مُفعّل بعد. يجب تفعيله من إعدادات Supabase.', 'error');
+      else window.uiToast('تعذّر تسجيل الدخول: ' + (c || 'حاول لاحقاً'), 'error');
+    }
   };
 
   /* ---------- قائمة "محادثاتي" ---------- */
@@ -338,13 +507,77 @@
     return ins.data;
   }
 
+  // يبني فقاعة رسالة الإدارة/الدعم مع أيقونة الدعم بجانبها
+  function themRow(innerHtml) {
+    var row = document.createElement('div'); row.className = 'ac-trow';
+    row.innerHTML = '<div class="ac-mini-av">' + SUPPORT_SVG + '</div><div class="ac-bubble them">' + innerHtml + '</div>';
+    return row;
+  }
   function renderMessage(m) {
     var body = document.getElementById('acChatBody');
-    var div = document.createElement('div');
-    div.className = 'ac-bubble ' + (m.sender_role === 'user' ? 'me' : 'them');
-    div.innerHTML = esc(m.body) + '<span class="time">' + fmtTime(m.created_at) + '</span>';
-    body.appendChild(div); body.scrollTop = body.scrollHeight;
+    var mine = m.sender_role === 'user';
+    var node;
+    if (mine) {
+      node = document.createElement('div'); node.className = 'ac-bubble me';
+      node.innerHTML = esc(m.body) + '<span class="time">' + fmtTime(m.created_at) + '</span>';
+    } else {
+      var nameTag = m.sender_name ? '<div class="ac-sender">' + esc(m.sender_name) + '</div>' : '';
+      node = themRow(nameTag + esc(m.body) + '<span class="time">' + fmtTime(m.created_at) + '</span>');
+    }
+    body.appendChild(node);
+    var t = document.getElementById('acTyping'); if (t) body.appendChild(t); // أبقِ مؤشّر الكتابة بالأسفل
+    body.scrollTop = body.scrollHeight;
   }
+  // فقاعة الردّ التلقائي (الدعم الآلي)
+  function botMsg(text) {
+    var body = document.getElementById('acChatBody'); if (!body) return;
+    var empty = body.querySelector('.ac-empty'); if (empty) empty.remove();
+    body.appendChild(themRow('<div class="ac-sender">الدعم الآلي</div>' + esc(text) + '<span class="time">' + fmtTime(new Date().toISOString()) + '</span>'));
+    var t = document.getElementById('acTyping'); if (t) body.appendChild(t);
+    body.scrollTop = body.scrollHeight;
+  }
+  // رسالة نظام مركزيّة (بدء/إنهاء الجلسة)
+  function sysMsg(text) {
+    var body = document.getElementById('acChatBody'); if (!body) return;
+    var d = document.createElement('div'); d.className = 'ac-sys'; d.textContent = text;
+    body.appendChild(d);
+    var t = document.getElementById('acTyping'); if (t) body.appendChild(t);
+    body.scrollTop = body.scrollHeight;
+  }
+  // مؤشّر "جاري الكتابة"
+  function showTyping() {
+    var body = document.getElementById('acChatBody'); if (!body) return;
+    var t = document.getElementById('acTyping');
+    if (!t) { t = document.createElement('div'); t.id = 'acTyping'; t.className = 'ac-typing'; t.innerHTML = '<span></span><span></span><span></span>'; }
+    body.appendChild(t); t.classList.add('show'); body.scrollTop = body.scrollHeight;
+    clearTimeout(_typingHide); _typingHide = setTimeout(hideTyping, 2600);
+  }
+  function hideTyping() { var t = document.getElementById('acTyping'); if (t) t.classList.remove('show'); }
+  // قناة البثّ المشتركة مع الأدمن (كتابة + أحداث الجلسة)
+  function joinRT(convId) {
+    if (_rt) { sb.removeChannel(_rt); _rt = null; }
+    _rt = sb.channel('rt-' + convId, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'typing' }, function (p) { if (p.payload && p.payload.role === 'admin') showTyping(); })
+      .on('broadcast', { event: 'session' }, function (p) {
+        var d = p.payload || {};
+        if (d.action === 'start') sysMsg('تم بدء الجلسة' + (d.name ? ' مع ' + d.name : ''));
+        else if (d.action === 'end') {
+          hideTyping(); sysMsg('تم إنهاء الجلسة — شكراً لتواصلك 🌹');
+          var inp = document.getElementById('acChatInput'); if (inp) { inp.disabled = true; inp.placeholder = 'انتهت الجلسة'; }
+          _conv = null; // لا يمكن إعادة فتحها — حُذفت نهائياً
+          setTimeout(function () { window._acCloseChat(); }, 1600);
+        }
+      })
+      .subscribe();
+  }
+  window._acTyping = function () {
+    var now = Date.now();
+    if (_rt && now - _lastTyped > 1400) {
+      _lastTyped = now;
+      var nm = (window.currentUserInfo && window.currentUserInfo()) ? window.currentUserInfo().name : '';
+      _rt.send({ type: 'broadcast', event: 'typing', payload: { role: 'user', name: nm || 'زائر' } });
+    }
+  };
 
   async function loadMessages(convId) {
     var body = document.getElementById('acChatBody'); body.innerHTML = '';
@@ -375,17 +608,22 @@
       _conv = await getOrCreateConversation(adId);
       var title = _conv.subject ? ('بخصوص: ' + _conv.subject) : 'الدردشة مع الإدارة';
       document.getElementById('acChatTitle').textContent = title;
+      var inp0 = document.getElementById('acChatInput'); if (inp0) { inp0.disabled = false; inp0.placeholder = 'اكتب رسالتك...'; }
       document.getElementById('acChat').classList.add('show');
       await loadMessages(_conv.id);
       subscribe(_conv.id);
+      joinRT(_conv.id);
+      // رسالة الترحيب تصل فقط بعد أن يرسل الزبون أوّل رسالة (في _acSend)
+      _autoReplied = !!document.querySelector('#acChatBody .ac-bubble.me');
       if (prefill) { document.getElementById('acChatInput').value = prefill; }
       setTimeout(function () { document.getElementById('acChatInput').focus(); }, 100);
-    } catch (e) { alert('تعذّر فتح الدردشة: ' + ((e && e.message) || '')); }
+    } catch (e) { window.uiToast('تعذّر فتح الدردشة: ' + ((e && e.message) || ''), 'error'); }
   };
 
   window._acCloseChat = function () {
     document.getElementById('acChat').classList.remove('show');
     if (_channel) { sb.removeChannel(_channel); _channel = null; }
+    if (_rt) { sb.removeChannel(_rt); _rt = null; }
     _conv = null;
   };
 
@@ -395,12 +633,24 @@
     inp.value = '';
     renderMessage({ sender_role: 'user', body: text, created_at: new Date().toISOString() });
     var empty = document.querySelector('#acChatBody .ac-empty'); if (empty) empty.remove();
-    var r = await sb.from('messages').insert({ conversation_id: _conv.id, sender_id: _user.id, sender_role: 'user', body: text });
-    if (r.error) { alert('تعذّر الإرسال: ' + r.error.message); return; }
+    var md = _user.user_metadata || {};
+    var r = await sb.from('messages').insert({ conversation_id: _conv.id, sender_id: _user.id, sender_role: 'user', body: text, sender_name: md.full_name || '' });
+    if (r.error) { window.uiToast('تعذّر الإرسال: ' + r.error.message, 'error'); return; }
     sb.from('conversations').update({ last_message_at: new Date().toISOString() }).eq('id', _conv.id).then(function () {});
+    // رسالة الترحيب/الردّ التلقائي — تصل بعد أوّل رسالة يرسلها الزبون فقط
+    if (!_autoReplied) { _autoReplied = true; setTimeout(function () { botMsg('👋 أهلاً بك في «طلبك تم»! شكراً لتواصلك 🌹 تم استلام رسالتك وسيردّ عليك فريق الدعم في أسرع وقت.'); }, 600); }
   };
 
   /* ---------- 6) تتبّع حالة الجلسة ---------- */
+  function showReset() {
+    var ov = document.getElementById('acResetOverlay'); if (!ov) return;
+    document.getElementById('acResetMsg').className = 'ac-msg';
+    document.getElementById('acResetPass').value = '';
+    ov.classList.add('show');
+  }
+  // إن عاد المستخدم من رابط إعادة التعيين، افتح نافذة كلمة المرور فوراً
+  if (_recoveryInUrl) { setTimeout(showReset, 400); }
+
   sb.auth.getUser().then(async function (s) {
     _user = s.data ? s.data.user : null;
     if (_user) await checkBlocked();
@@ -410,5 +660,7 @@
   sb.auth.onAuthStateChange(function (_e, session) {
     _user = session ? session.user : null;
     renderAccountBlock();
+    // المستخدم فتح رابط إعادة التعيين من بريده → اعرض نافذة كلمة المرور الجديدة
+    if (_e === 'PASSWORD_RECOVERY') showReset();
   });
 })();

@@ -172,6 +172,11 @@ function getFavs(){ try{ return JSON.parse(localStorage.getItem('tam_favs')||'[]
 function isFav(id){ return getFavs().includes(String(id)); }
 function toggleFav(id, ev){
   if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+  // المفضلة للمستخدمين المسجّلين فقط — الزائر يتصفّح فقط
+  if(typeof window.isLoggedIn==='function' && !window.isLoggedIn()){
+    if(typeof window._acOpenAuth==='function') window._acOpenAuth();
+    return;
+  }
   var favs=getFavs(), sid=String(id), i=favs.indexOf(sid);
   if(i>-1) favs.splice(i,1); else favs.push(sid);
   localStorage.setItem('tam_favs', JSON.stringify(favs));
@@ -182,7 +187,14 @@ function updateFavCount(){
   var n=getFavs().length;
   document.querySelectorAll('.fav-count').forEach(function(e){ e.textContent=n; e.style.display=n>0?'inline-flex':'none'; });
 }
-function showFavorites(){ sFav=true; sC=null; sType=null; sFeatured=false; sQ=''; nav('listings'); }
+function showFavorites(){
+  // قسم المفضلة للمستخدمين المسجّلين فقط
+  if(typeof window.isLoggedIn==='function' && !window.isLoggedIn()){
+    if(typeof window._acOpenAuth==='function') window._acOpenAuth();
+    return;
+  }
+  sFav=true; sC=null; sType=null; sFeatured=false; sQ=''; nav('listings');
+}
 var ICON_HEART='<svg viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
 let calY,calM,_calStart=null,_calEnd=null,_calPrice=0;
 
@@ -957,7 +969,9 @@ function viewDetail(id){
   const dotsHTML=imgs.length>1?`<div class="l-dots">${imgs.map((_,j)=>`<span class="${j===0?'act':''}"></span>`).join('')}</div>`:'';
   let badgeClass=l.catId==='apt-rent'?'rent':l.catId==='apt-sale'?'sale':l.catId==='car-rent'?'car-r':l.catId==='car-sale'?'car-s':l.catId==='equip-rent'?'equip-r':l.catId==='free-ad'?'free-ad':'equip-s';
 
-	  if(rent){ document.getElementById('detWrap').innerHTML = gathernRentalHTML(l, cat, imgs, badgeClass); return; }
+	  // قالب موحّد بأسلوب Gathern لكل الإعلانات (إيجار/بيع/مجاني)
+	  document.getElementById('detWrap').innerHTML = gathernDetailHTML(l, cat, imgs, badgeClass);
+	  return;
 	  if(rent && apt){
 	    // ===== RENTAL APARTMENTS - with Monthly/Daily toggle =====
 	    let specsHTML=buildDetailSpecs(l,apt);
@@ -1342,10 +1356,13 @@ function buildDetailSpecs(l,apt){
   }
 }
 
-/* ===== قالب الإيجار بأسلوب Gathern (رأس → معرض → عمودان) ===== */
-function gathernRentalHTML(l, cat, imgs, badgeClass){
+/* ===== قالب موحّد بأسلوب Gathern لكل الإعلانات (رأس → معرض → عمودان) ===== */
+function gathernDetailHTML(l, cat, imgs, badgeClass){
   var apt = isApt(l.catId);
-  var specsHTML = buildDetailSpecs(l, apt);
+  var rent = isRent(l.catId);
+  var freead = isFreeAd(l.catId);
+  var sale = !rent && !freead;
+  var specsHTML = freead ? '' : buildDetailSpecs(l, apt);
   var mapHTML = buildMapSection(l.location);
   window._gdImgs = imgs; window._gdIdx = 0;
   var arrows = imgs.length>1 ? ('<button class="gd-arrow prev" onclick="event.stopPropagation();window._gdNav(1)">'+ICON.prev+'</button><button class="gd-arrow next" onclick="event.stopPropagation();window._gdNav(-1)">'+ICON.next+'</button>') : '';
@@ -1363,8 +1380,41 @@ function gathernRentalHTML(l, cat, imgs, badgeClass){
   var tags = [];
   tags.push(esc(l.neighborhood ? (l.neighborhood+' / '+l.city) : l.location));
   tags.push(esc(cat.label));
-  if(l.negotiable) tags.push('قابل للتفاوض');
+  if(freead){ if(l.profession) tags.push(esc(l.profession)); }
+  else if(l.negotiable){ tags.push('قابل للتفاوض'); }
   var tagsHTML = tags.map(function(t){ return '<span class="gd-tag">'+t+'</span>'; }).join('');
+
+  // بطاقة الحجز حسب نوع الإعلان
+  var phoneIco = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.11 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>';
+  var card;
+  if(rent){
+    // كل الإيجارات: مبدّل يومي / شهري (الشهري بسعر يُتفق عليه، يفتح معالج الحجز)
+    card = '<div class="gd-rt">'
+      + '<button class="gd-rt-b act" id="gdRtD" onclick="window._gdRt(\'daily\')">يومي</button>'
+      + '<button class="gd-rt-b" id="gdRtM" onclick="window._gdRt(\'monthly\')">شهري</button>'
+      + '</div>'
+      + '<div id="gdDaily">'
+      +   '<div class="gd-price">'+fmtPrice(l.price,true)+' <small>/ يوم</small></div>'
+      +   '<div class="gd-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>'
+      +   '<button class="gd-btn primary" onclick="handleBookClick()">احجز الآن</button>'
+      + '</div>'
+      + '<div id="gdMonthly" style="display:none">'
+      +   '<div class="gd-price agreed">السعر يُتفق عليه</div>'
+      +   '<div class="gd-dates">اختر المدّة ومعلوماتك في الخطوة التالية</div>'
+      +   '<button class="gd-btn primary" onclick="window.openBooking(\''+l.id+'\',\'monthly\')">احجز شهرياً</button>'
+      + '</div>'
+      + '<button class="gd-btn ghost" onclick="openChat(\''+l.id+'\')">تواصل مع الإدارة</button>';
+  } else if(sale){
+    card = '<div class="gd-price">'+fmtPrice(l.price,true)+'</div>'
+      + '<div class="gd-dates">'+(l.negotiable?'السعر قابل للتفاوض':'السعر نهائي')+'</div>'
+      + '<button class="gd-btn primary" onclick="submitPurchaseRequest(\''+l.id+'\')">إرسال طلب شراء</button>'
+      + '<button class="gd-btn ghost" onclick="openChat(\''+l.id+'\')">تواصل مع الإدارة</button>';
+  } else { // إعلان مجاني — تواصل مباشر مع المعلِن، بلا دردشة
+    var tel = '+'+String(l.phone||'963983127483').replace(/[^0-9]/g,'');
+    card = '<div class="gd-price free">إعلان مجاني</div>'
+      + '<div class="gd-dates">تواصل مباشرةً مع المُعلِن</div>'
+      + '<a class="gd-btn primary" href="tel:'+tel+'" style="text-decoration:none;display:flex;align-items:center;justify-content:center;gap:8px">'+phoneIco+' اتصال مباشر</a>';
+  }
   return ''
     + '<div class="gd">'
     + '<div class="gd-header"><div class="gd-h-row"><h1 class="gd-title">'+esc(l.title)+'</h1>'
@@ -1380,12 +1430,7 @@ function gathernRentalHTML(l, cat, imgs, badgeClass){
     +     (specsHTML?'<section class="gd-sec"><h3 class="gd-sec-t">'+(apt?'المرافق':'المواصفات والمميزات')+'</h3><div class="det-specs">'+specsHTML+'</div></section>':'')
     +     '<section class="gd-sec"><h3 class="gd-sec-t">الموقع</h3>'+mapHTML+'</section>'
     +   '</main>'
-    +   '<aside class="gd-booking"><div class="gd-card">'
-    +     '<div class="gd-price">'+fmtPrice(l.price,true)+' <small>/ يوم</small></div>'
-    +     '<div class="gd-dates" id="abSideDates">حدد التواريخ من الروزنامة</div>'
-    +     '<button class="gd-btn primary" onclick="handleBookClick()">احجز الآن</button>'
-    +     '<button class="gd-btn ghost" onclick="openChat(\''+l.id+'\')">تواصل مع الإدارة</button>'
-    +   '</div></aside>'
+    +   '<aside class="gd-booking"><div class="gd-card">'+card+'</div></aside>'
     + '</div>'
     + '</div>';
 }
@@ -1394,6 +1439,15 @@ window._gdNav = function(d){
   window._gdIdx=((window._gdIdx||0)+d+n)%n;
   var im=document.getElementById('gdMainImg');
   if(im){ im.src=window._gdImgs[window._gdIdx]; im.setAttribute('onclick','openLightbox('+window._gdIdx+')'); }
+};
+// مبدّل يومي/شهري في بطاقة الحجز
+window._gdRt = function(mode){
+  var daily=document.getElementById('gdDaily'), monthly=document.getElementById('gdMonthly');
+  var bd=document.getElementById('gdRtD'), bm=document.getElementById('gdRtM');
+  if(!daily||!monthly) return;
+  var isM=mode==='monthly';
+  daily.style.display=isM?'none':''; monthly.style.display=isM?'':'none';
+  if(bd) bd.classList.toggle('act',!isM); if(bm) bm.classList.toggle('act',isM);
 };
 (function(){
   var c = ''
@@ -1428,12 +1482,20 @@ window._gdNav = function(d){
   + '.gd-card{background:#fff;border:1px solid #eef2f7;border-radius:18px;padding:20px;box-shadow:0 6px 24px rgba(0,0,0,.08)}'
   + '.gd-price{font-size:24px;font-weight:900;color:#0f172a;text-align:center}'
   + '.gd-price small{font-size:13px;color:#94a3b8;font-weight:600}'
+  + '.gd-price.free{font-size:19px;color:#16a34a}'
+  + '.gd-price.agreed{font-size:18px;color:var(--primary,#0D9488)}'
+  + '.gd-rt{display:flex;gap:6px;background:#f1f5f9;border-radius:13px;padding:4px;margin-bottom:14px}'
+  + '.gd-rt-b{flex:1;border:none;background:transparent;padding:10px;border-radius:10px;font-weight:800;font-size:13px;color:#64748b;cursor:pointer;font-family:inherit}'
+  + '.gd-rt-b.act{background:#fff;color:#0f172a;box-shadow:0 1px 5px rgba(0,0,0,.09)}'
   + '.gd-dates{font-size:13px;color:#64748b;text-align:center;margin:8px 0 16px;padding-bottom:14px;border-bottom:1px solid #f1f5f9}'
   + '.gd-btn{width:100%;padding:15px;border:none;border-radius:13px;font-size:16px;font-weight:800;cursor:pointer;font-family:inherit;margin-top:10px}'
   + '.gd-btn.primary{background:#F6921E;color:#fff;margin-top:0}'
   + '.gd-btn.ghost{background:#fff;color:var(--primary,#0D9488);border:1.5px solid var(--primary,#0D9488)}'
   + '.gd-sec-t{font-size:17px;font-weight:800;color:#0f172a;margin:0 0 12px}'
-  + '.gd-desc{font-size:15.5px;color:#374151;line-height:2.1;white-space:pre-wrap;background:#f8fafc;border:1px solid #eef2f7;border-radius:14px;padding:18px;min-height:110px}'
+  + '.gd-desc{font-size:15.5px;color:#374151;line-height:2.1;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;background:#f8fafc;border:1px solid #eef2f7;border-radius:14px;padding:18px;min-height:110px}'
+  + '.gd-main{overflow:hidden}'
+  + '.gd-title{overflow-wrap:anywhere}'
+  + '.det-desc,.l-desc,.l-title{overflow-wrap:anywhere;word-break:break-word}'
   + '@media(min-width:1024px){'
   +   '.gd-gallery.grid{display:flex;gap:10px;height:440px;padding:0}'
   +   '.gd-g-main{flex:2}.gd-g-main img{height:440px;border-radius:18px}'
@@ -1512,8 +1574,8 @@ function submitMonthlyBooking(id){
   const name=document.getElementById('mbfName').value.trim();
   const last=document.getElementById('mbfLast').value.trim();
   const phone=document.getElementById('mbfPhone').value.trim();
-  if(!name||!phone){alert('يرجى تعبئة الاسم ورقم الهاتف');return;}
-  if(_selectedMonths === undefined || _selectedMonths === null){alert('يرجى اختيار مدة الإيجار');return;}
+  if(!name||!phone){window.uiToast('يرجى تعبئة الاسم ورقم الهاتف','error');return;}
+  if(_selectedMonths === undefined || _selectedMonths === null){window.uiToast('يرجى اختيار مدة الإيجار','error');return;}
   const cat=getCat(l.catId);
   let msg='📋 طلب إيجار شهري\n';
   if(l.ref) msg+='رمز الإعلان: '+l.ref+'\n';
@@ -1554,9 +1616,9 @@ function scrollToCal(){
 // إرسال طلب شراء لإعلان بيع
 function submitPurchaseRequest(id){
   var l=listings.find(x=>String(x.id)===String(id))||window._currentListing; if(!l)return;
-  if(!window.submitBookingRequest) return;
-  if(!confirm('إرسال طلب شراء لهذا الإعلان؟ ستتواصل معك الإدارة.')) return;
-  submitBookingRequest({
+  // افتح معالج الطلب (معلومات كاملة ثم مراجعة) بوضع الشراء
+  if(window.openBooking){ openBooking(l.id, 'sale'); return; }
+  if(window.submitBookingRequest) submitBookingRequest({
     adId:l.id, adRef:l.ref||'', adTitle:l.title||'', adCatId:l.catId||'', adImage:(l.images&&l.images[0])||'',
     dealType:'sale', priceDaily:null, totalPrice:l.price||null
   });
@@ -1950,7 +2012,7 @@ function sendFreeAdWhatsApp() {
   if (prof === 'أخرى') prof = document.getElementById('faOtherProfession').value;
 
   if (!name || !phone || !address || !prof) {
-    alert('يرجى ملء جميع الخانات');
+    window.uiToast('يرجى ملء جميع الخانات', 'error');
     return;
   }
 
@@ -1967,6 +2029,8 @@ function sendFreeAdWhatsApp() {
 // Init
 const _savedState = JSON.parse(sessionStorage.getItem('tam_state') || 'null');
 const _isRefresh = !!_savedState;
+// عند تحديث صفحة الإعلان: احفظ معرّفه من حالة المتصفّح (تبقى عبر الريفريش) قبل أن نستبدلها
+const _refreshDetailId = (history.state && history.state.page === 'detail' && history.state.detailId != null) ? history.state.detailId : null;
 
 // Show blur on every load
 // No loading effect
@@ -1982,6 +2046,11 @@ function restoreState() {
   if (_sharedId) {
     history.replaceState({page:'detail',detailId:_sharedId,sC:null,sType:null,sFeatured:false,sQ:'',currentPage:1},'',window.location.pathname);
     window._pendingShareId = _sharedId;
+    return;
+  }
+  // عند تحديث الصفحة وأنت داخل إعلان: ابقَ على الإعلان نفسه
+  if (_refreshDetailId != null) {
+    window._pendingShareId = _refreshDetailId;
     return;
   }
   if (_savedState) {

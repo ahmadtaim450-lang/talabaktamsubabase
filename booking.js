@@ -14,6 +14,7 @@
   };
 
   var _ad = null, _start = null, _end = null, _cy, _cm, _step = 1;
+  var _mode = 'rent', _months = null;   // وضع الحجز: يومي (rent) أو شهري (monthly)
 
   /* أخفِ التقويم/النموذج القديم داخل التفاصيل (استُبدل بهذه النافذة) */
   var css = ''
@@ -63,6 +64,9 @@
     /* تخطيط اللابتوب: روزنامة + معلومات جنباً إلى جنب */
     + '@media(min-width:1000px){.bk-body{max-width:860px}.bk-two{display:flex;gap:30px;align-items:flex-start}.bk-two .bk-col-cal{flex:1;min-width:0}.bk-two .bk-col-info{flex:0 0 300px;border-right:1px solid #eef2f7;padding-right:26px}.bk-two .bk-col-info .bk-sec-title{margin-top:0}}'
     + '.bk-sum{margin-top:14px;background:#f8fafc;border:1px solid #eef2f7;border-radius:12px;padding:12px;font-size:.9rem;color:#334155;line-height:2}'
+    /* اختيار الأشهر (الإيجار الشهري) */
+    + '.bk-msel{width:100%;box-sizing:border-box;padding:14px;border:1.5px solid #e2e8f0;border-radius:12px;font-size:1rem;font-family:inherit;outline:none;background:#fff}'
+    + '.bk-msel:focus{border-color:#F6921E}'
     /* الحقول */
     + '.bk-field{margin-bottom:12px}'
     + '.bk-field label{display:block;font-size:.82rem;font-weight:700;color:#334155;margin-bottom:6px}'
@@ -101,11 +105,12 @@
   }
 
   /* ---------- فتح النافذة ---------- */
-  window.openBooking = function (adId) {
+  window.openBooking = function (adId, mode) {
     var list = (typeof listings !== 'undefined') ? listings : [];
     _ad = list.find(function(x){ return String(x.id)===String(adId); }) || window._currentListing;
-    if(!_ad){ alert('تعذّر فتح الحجز'); return; }
-    _start=null; _end=null; _step=1;
+    if(!_ad){ window.uiToast('تعذّر فتح الحجز','error'); return; }
+    _mode = (mode==='monthly' || mode==='sale') ? mode : 'rent';
+    _start=null; _end=null; _months=null; _step=1;
     var n=new Date(); _cy=n.getFullYear(); _cm=n.getMonth();
     // حدّث الأيام المعطّلة من القاعدة إن أمكن
     if (window.refreshBlockedDates) { try { window.refreshBlockedDates().then(render); } catch(e){ render(); } }
@@ -118,12 +123,21 @@
   window._bkNext = function(){ if(_step<3){ _step++; render(); } };
 
   function setSteps(){
+    if(_mode==='sale'){
+      document.getElementById('bkS2').style.display='none';
+      document.getElementById('bkS3').style.display='none';
+      document.getElementById('bkS1').className='on';
+      document.getElementById('bkTitle').textContent='طلب الشراء';
+      return;
+    }
+    document.getElementById('bkS2').style.display='';
     var desk=isDesk();
     document.getElementById('bkS3').style.display = desk?'none':'';
     document.getElementById('bkS1').className = 'on';
     document.getElementById('bkS2').className = (desk ? (_step>=3?'on':'') : (_step>=2?'on':''));
     document.getElementById('bkS3').className = (_step>=3?'on':'');
-    document.getElementById('bkTitle').textContent = desk ? (_step<3?'تفاصيل الحجز':'مراجعة الطلب') : (_step===1?'اختر التواريخ':_step===2?'معلوماتك':'مراجعة الطلب');
+    var s1t = (_mode==='monthly') ? 'اختر المدّة' : 'اختر التواريخ';
+    document.getElementById('bkTitle').textContent = desk ? (_step<3?'تفاصيل الحجز':'مراجعة الطلب') : (_step===1?s1t:_step===2?'معلوماتك':'مراجعة الطلب');
   }
 
   /* ---------- العرض ---------- */
@@ -131,9 +145,19 @@
   function render(){
     setSteps();
     var body=document.getElementById('bkBody'), foot=document.getElementById('bkFoot');
+    if(_mode==='sale'){
+      // طلب الشراء: فورم واحد يُملأ ويُرسل مباشرة (بلا روزنامة وبلا مراجعة)
+      body.innerHTML='<div class="bk-sec-title">معلومات طلب الشراء</div>'+infoHtml();
+      foot.innerHTML='<button class="bk-btn primary" onclick="window._bkSaleSend()">إرسال الطلب</button>';
+      return;
+    }
+    var monthly = _mode==='monthly';
+    var step1Html = monthly ? monthsHtml() : calHtml();
+    var step1Title = monthly ? 'اختر مدّة الإيجار' : 'اختر تواريخ الحجز';
+    var step1Ready = monthly ? (_months!=null) : (_start&&_end);
     if(isDesk()){
       if(_step<3){
-        body.innerHTML='<div class="bk-two"><div class="bk-col-cal"><div class="bk-sec-title">اختر تواريخ الحجز</div>'+calHtml()+'</div>'
+        body.innerHTML='<div class="bk-two"><div class="bk-col-cal"><div class="bk-sec-title">'+step1Title+'</div>'+step1Html+'</div>'
           + '<div class="bk-col-info"><div class="bk-sec-title">معلوماتك</div>'+infoHtml()+'</div></div>';
         foot.innerHTML='<button class="bk-btn primary" onclick="window._bkDeskNext()">التالي — مراجعة الطلب</button>';
       } else {
@@ -142,18 +166,18 @@
       }
       return;
     }
-    if(_step===1){ body.innerHTML=calHtml(); foot.innerHTML='<button class="bk-btn primary" '+(_start&&_end?'':'disabled')+' onclick="window._bkNext()">التالي</button>'; }
+    if(_step===1){ body.innerHTML=step1Html; foot.innerHTML='<button class="bk-btn primary" '+(step1Ready?'':'disabled')+' onclick="window._bkNext()">التالي</button>'; }
     else if(_step===2){ body.innerHTML=infoHtml(); foot.innerHTML='<button class="bk-btn ghost" onclick="window._bkBack()">رجوع</button><button class="bk-btn primary" onclick="window._bkToReview()">التالي</button>'; }
     else { body.innerHTML=reviewHtml(); foot.innerHTML='<button class="bk-btn ghost" onclick="window._bkBack()">تعديل</button><button class="bk-btn primary" onclick="window._bkSend()">إرسال الطلب</button>'; }
   }
   window._bkDeskNext=function(){
-    if(!_start||!_end){ alert('اختر تواريخ الحجز أولاً'); return; }
-    var name=(document.getElementById('bkName').value||'').trim();
-    var phone=(document.getElementById('bkPhone').value||'').trim();
-    if(!name||!phone){ alert('أدخل الاسم ورقم الهاتف'); return; }
-    _info={ name:name, phone:phone, address:(document.getElementById('bkAddr').value||'').trim() };
-    _step=3; render();
+    if(_mode==='monthly'){ if(_months==null){ window.uiToast('اختر مدّة الإيجار أولاً','error'); return; } }
+    else if(!_start||!_end){ window.uiToast('اختر تواريخ الحجز أولاً','error'); return; }
+    var info=readInfo(); if(!info) return;
+    _info=info; _step=3; render();
   };
+  // طلب الشراء: يملأ الفورم ويُرسل مباشرة
+  window._bkSaleSend=function(){ var info=readInfo(); if(!info) return; _info=info; window._bkSend(); };
 
   /* خطوة 1: التقويم */
   function calHtml(){
@@ -194,47 +218,94 @@
     render();
   };
 
+  /* خطوة 1 (شهري): اختيار المدّة */
+  function monthsHtml(){
+    var opts='<option value="">— اختر مدّة الإيجار —</option>';
+    for(var i=1;i<=24;i++) opts+='<option value="'+i+'"'+(_months===i?' selected':'')+'>'+i+' شهر</option>';
+    opts+='<option value="-1"'+(_months===-1?' selected':'')+'>مدة غير محدّدة</option>';
+    var h='<select class="bk-msel" onchange="window._bkPickMonth(this.value)">'+opts+'</select>';
+    if(_months!=null){
+      h+='<div class="bk-sum">'
+        + '<div class="ln">'+SVG.clock+'المدّة: <b style="margin-right:4px">'+(_months>0?_months+' شهر':'غير محدّدة')+'</b></div>'
+        + '<div class="ln">'+SVG.money+'السعر: <b style="margin-right:4px;color:#0D9488">يُتفق عليه مع الإدارة</b></div>'
+        + '</div>';
+    } else h+='<div class="bk-sum">اختر عدد الأشهر — السعر يُتفق عليه مع الإدارة</div>';
+    return h;
+  }
+  window._bkPickMonth=function(v){ _months = (v===''?null:parseInt(v)); render(); };
+
   /* خطوة 2: المعلومات */
   function infoHtml(){
     var info=(window.currentUserInfo&&window.currentUserInfo())||{};
-    var parts=(info.name||'').trim().split(/\s+/); var first=parts.shift()||''; var last=parts.join(' ');
-    return '<div class="bk-field"><label>الاسم</label><input id="bkName" value="'+esc((first+' '+last).trim())+'" placeholder="اسمك الكامل"></div>'
+    var parts=(info.name||'').trim().split(/\s+/);
+    var first=info.first||parts.shift()||''; var last=info.last||parts.join(' ');
+    return '<div class="bk-field"><label>الاسم</label><input id="bkName" value="'+esc(first)+'" placeholder="مثلاً: أحمد"></div>'
+      + '<div class="bk-field"><label>الكنية</label><input id="bkLast" value="'+esc(last)+'" placeholder="مثلاً: علي"></div>'
       + '<div class="bk-field"><label>رقم الهاتف</label><input id="bkPhone" inputmode="numeric" dir="ltr" value="'+esc(info.phone||'')+'" placeholder="09xxxxxxxx" oninput="this.value=this.value.replace(/[^0-9]/g,\'\')"></div>'
+      + '<div class="bk-field"><label>البريد الإلكتروني</label><input id="bkEmail" type="email" dir="ltr" value="'+esc(info.email||'')+'" placeholder="you@email.com"></div>'
       + '<div class="bk-field"><label>العنوان <span style="color:#94a3b8">(اختياري)</span></label><input id="bkAddr" value="'+esc(info.address||'')+'" placeholder="المدينة، الحي"></div>';
   }
-  window._bkToReview=function(){
+  function readInfo(){
     var name=(document.getElementById('bkName').value||'').trim();
+    var last=(document.getElementById('bkLast').value||'').trim();
     var phone=(document.getElementById('bkPhone').value||'').trim();
-    if(!name||!phone){ alert('أدخل الاسم ورقم الهاتف'); return; }
-    _info={ name:name, phone:phone, address:(document.getElementById('bkAddr').value||'').trim() };
-    _step=3; render();
+    var email=(document.getElementById('bkEmail').value||'').trim();
+    if(!name||!last||!phone||!email){ window.uiToast('أدخل الاسم والكنية والهاتف والبريد الإلكتروني','error'); return null; }
+    return { name:name, last:last, phone:phone, email:email, address:(document.getElementById('bkAddr').value||'').trim() };
+  }
+  window._bkToReview=function(){
+    var info=readInfo(); if(!info) return;
+    _info=info; _step=3; render();
   };
   var _info={};
 
   /* خطوة 3: المراجعة */
   function reviewHtml(){
+    var head = '<div class="row"><span>الإعلان</span><b>'+esc(_ad.title||'')+'</b></div>'
+      + (_ad.ref?'<div class="row"><span>الرمز</span><b>'+esc(_ad.ref)+'</b></div>':'');
+    var who = '<div class="row"><span>الاسم</span><b>'+esc(_info.name)+'</b></div>'
+      + '<div class="row"><span>الكنية</span><b>'+esc(_info.last)+'</b></div>'
+      + '<div class="row"><span>الهاتف</span><b dir="ltr">'+esc(_info.phone)+'</b></div>'
+      + '<div class="row"><span>البريد</span><b dir="ltr">'+esc(_info.email)+'</b></div>'
+      + (_info.address?'<div class="row"><span>العنوان</span><b>'+esc(_info.address)+'</b></div>':'');
+    if(_mode==='sale'){
+      return '<div class="bk-review">'+head
+        + '<div class="row"><span>نوع الطلب</span><b>شراء</b></div>'
+        + who
+        + '<div class="row" style="border:none"><span>السعر</span><span class="total">'+(_ad.price?money(_ad.price):'يُتفق عليه')+'</span></div>'
+        + '</div>';
+    }
+    if(_mode==='monthly'){
+      return '<div class="bk-review">'+head
+        + '<div class="row"><span>نوع الإيجار</span><b>شهري</b></div>'
+        + '<div class="row"><span>المدّة</span><b>'+(_months>0?_months+' شهر':'غير محدّدة')+'</b></div>'
+        + who
+        + '<div class="row" style="border:none"><span>السعر</span><span class="total" style="color:#0D9488">يُتفق عليه</span></div>'
+        + '</div>';
+    }
     var n=daysCount();
-    return '<div class="bk-review">'
-      + '<div class="row"><span>الإعلان</span><b>'+esc(_ad.title||'')+'</b></div>'
-      + (_ad.ref?'<div class="row"><span>الرمز</span><b>'+esc(_ad.ref)+'</b></div>':'')
+    return '<div class="bk-review">'+head
       + '<div class="row"><span>من</span><b>'+fmtD(_start)+'</b></div>'
       + '<div class="row"><span>إلى</span><b>'+fmtD(_end)+'</b></div>'
       + '<div class="row"><span>المدة</span><b>'+n+' يوم</b></div>'
-      + '<div class="row"><span>الاسم</span><b>'+esc(_info.name)+'</b></div>'
-      + '<div class="row"><span>الهاتف</span><b dir="ltr">'+esc(_info.phone)+'</b></div>'
-      + (_info.address?'<div class="row"><span>العنوان</span><b>'+esc(_info.address)+'</b></div>':'')
+      + who
       + '<div class="row" style="border:none"><span>الإجمالي</span><span class="total">'+money(_ad.price*n)+'</span></div>'
       + '</div>';
   }
   window._bkSend=function(){
-    if(!window.submitBookingRequest){ alert('تعذّر الإرسال'); return; }
-    var n=daysCount();
+    if(!window.submitBookingRequest){ window.uiToast('تعذّر الإرسال','error'); return; }
     window._bkClose();
-    submitBookingRequest({
-      adId:_ad.id, adRef:_ad.ref||'', adTitle:_ad.title||'', adCatId:_ad.catId||'', adImage:(_ad.images&&_ad.images[0])||'',
-      dealType:'rent', dateFrom:iso(_start), dateTo:iso(_end), days:n,
-      priceDaily:_ad.price, totalPrice:_ad.price*n,
-      clientName:_info.name, clientPhone:_info.phone, clientAddress:_info.address
-    });
+    var who={ clientName:_info.name, clientLast:_info.last, clientPhone:_info.phone, clientEmail:_info.email, clientAddress:_info.address };
+    var base={ adId:_ad.id, adRef:_ad.ref||'', adTitle:_ad.title||'', adCatId:_ad.catId||'', adImage:(_ad.images&&_ad.images[0])||'' };
+    if(_mode==='sale'){
+      submitBookingRequest(Object.assign({}, base, who, { dealType:'sale', priceDaily:null, totalPrice:_ad.price||null }));
+      return;
+    }
+    if(_mode==='monthly'){
+      submitBookingRequest(Object.assign({}, base, who, { dealType:'monthly', months:(_months>0?_months:null), priceDaily:null, totalPrice:null }));
+      return;
+    }
+    var n=daysCount();
+    submitBookingRequest(Object.assign({}, base, who, { dealType:'rent', dateFrom:iso(_start), dateTo:iso(_end), days:n, priceDaily:_ad.price, totalPrice:_ad.price*n }));
   };
 })();
